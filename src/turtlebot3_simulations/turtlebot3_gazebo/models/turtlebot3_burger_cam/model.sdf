@@ -328,12 +328,14 @@
             </ode>
           </contact>
         </surface>
-      </collision>
+      </collision>f
     </link>
-
-    <link name="camera_link">
+    
+    <link name="camera_link"/>
+    
+    <link name="camera_rgb_optical_frame">
       <inertial>
-        <pose>0.076 0.0 0.093 0 0 0</pose>
+        <pose>0.076 0.0 0.093 0 0.15 0</pose>
         <inertia>
           <ixx>0.001</ixx>
           <ixy>0.000</ixy>
@@ -346,49 +348,84 @@
       </inertial>
 
       <pose>0.076 0.0 0.093 0 0 0</pose>
-      <sensor name="camera" type="wideanglecamera">
+      <sensor name="camera" type="camera">
         <always_on>true</always_on>
         <visualize>true</visualize>
         <update_rate>30</update_rate>
         <camera name="picam">
-          <horizontal_fov>3.183</horizontal_fov>
+          <horizontal_fov>1.485595</horizontal_fov>
           <image>
-            <width>320</width>
-            <height>240</height>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+          </image>
+          <clip>
+              <near>0.03</near>
+              <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <!-- Noise is sampledindependently per pixel on each frame.
+                  That pixel's noise value is added to each of its color
+                  channels, which at that point lie in the range [0,1]. -->
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+          <plugin name="camera_driver" filename="libgazebo_ros_camera.so">
+            <ros>
+              <remapping>image_raw:=front/image_raw</remapping>
+              <remapping>camera_info:=front/camera_info</remapping>
+            </ros>
+              <cameraName>front_camera</cameraName>
+              <frameName>camera_rgb_optical_frame</frameName>
+              <topicName>front/image_raw</topicName>
+          </plugin>
+      </sensor>
+    </link>    
+    <link name="rear_camera_link">
+      <inertial>
+        <pose>-0.076 0.0 0.093 0 0.40 0</pose>
+        <inertia>
+          <ixx>0.001</ixx>
+          <ixy>0.000</ixy>
+          <ixz>0.000</ixz>
+          <iyy>0.001</iyy>
+          <iyz>0.000</iyz>
+          <izz>0.001</izz>
+        </inertia>
+        <mass>0.035</mass>
+      </inertial>
+
+      <pose>-0.126 0.0 0.09 0 0.4 3.14159</pose>  <!-- 뒤를 보도록 180도 회전 -->
+      <sensor name="rear_camera" type="camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30</update_rate>
+        <camera name="rear_picam">
+          <horizontal_fov>2.6</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
             <format>R8G8B8</format>
           </image>
           <clip>
             <near>0.03</near>
             <far>100</far>
           </clip>
-          <lens>
-            <type>custom</type>
-            <custom_function>
-              <c1>1.05</c1>
-              <c2>4</c2>
-              <f>1.0</f>
-              <fun>tan</fun>
-            </custom_function>
-            <scale_to_hfov>true</scale_to_hfov>
-            <cutoff_angle>3.1415</cutoff_angle>
-            <env_texture_size>512</env_texture_size>
-          </lens>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
         </camera>
-        <plugin name="camera_driver" filename="libgazebo_ros_camera.so">
-          <alwaysOn>true</alwaysOn>
-          <updateRate>30.0</updateRate>
-          <cameraName>camera</cameraName>
-          <frameName>camera_link</frameName>
-          <imageTopicName>image_raw</imageTopicName>
-          <cameraInfoTopicName>camera_info</cameraInfoTopicName>
-          <hackBaseline>0.07</hackBaseline>
-          <distortionK1>0.0</distortionK1>
-          <distortionK2>0.0</distortionK2>
-          <distortionK3>0.0</distortionK3>
-          <distortionT1>0.0</distortionT1>
-          <distortionT2>0.0</distortionT2>
+        <plugin name="rear_camera_driver" filename="libgazebo_ros_camera.so">
           <ros>
+            <remapping>image_raw:=rear/image_raw</remapping>
+            <remapping>camera_info:=rear/camera_info</remapping>
           </ros>
+          <cameraName>rear_camera</cameraName>
+          <frameName>rear_camera_link</frameName>
         </plugin>
       </sensor>
     </link>
@@ -448,7 +485,19 @@
         <xyz>0 0 1</xyz>
       </axis>
     </joint>
-
+    <joint name="rear_camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rear_camera_link</child>
+      <pose>-0.076 0.0 0.093 0 0 3.14159</pose> <!-- 뒤쪽, 회전 포함 -->
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+    <joint name="front_camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_rgb_optical_frame</child>
+      <pose>0.076 0.0 0.093 0 0 0</pose>
+    </joint>
     <plugin name="turtlebot3_diff_drive" filename="libgazebo_ros_diff_drive.so">
 
       <ros>

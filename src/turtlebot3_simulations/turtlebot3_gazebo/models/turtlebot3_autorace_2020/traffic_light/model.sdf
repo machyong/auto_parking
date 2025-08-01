@@ -26,6 +26,9 @@
       </visual>
     </link>
     <plugin name="traffic_light_plugin" filename="libtraffic_light_plugin.so">
+      <green_duration>10</green_duration>
+      <yellow_duration>3</yellow_duration>
+      <red_duration>10</red_duration>
     </plugin>
     <static>1</static>
   </model>
