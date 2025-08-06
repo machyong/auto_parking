@@ -13,6 +13,7 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 |----------|------|
 | `main` | 기본 TurtleBot3 및 autorace 환경 |
 | `rear_camera_parkingline_detector` | 후방 카메라의 이미지를 필터링하여 주차라인 도착 여부 확인 |
+| `parking_area_detect` | 우측 카메라의 이미지를 필터링하여 주차 가능구역 탐색 |
 
 ---
 
@@ -51,7 +52,13 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 - ROI 설정을 통한 아래 화면의 80% 사용 범위 설정
 - 노란선 비율 0.6 이상일 시 노란선 인식 토픽 발행 (서비스 서버로 수정 예정)
 > 브랜치: `main/rear_camera_parking_detector`
-
+- ROI(Region of Interest) 설정을 통해 화면 하단 80% 영역만 사용
+- 노란선과 흰색 이진화 이미지 생성
+- 주차 구역 검출을 위한 Parking Zone Detector 노드 구현
+- ROI 내에서 사각형(4변) 컨투어 중, 넓이가 전체 ROI의 40% 이상일 경우 "주차 가능 구역"으로 판별
+- 결과에 따라 **주차 가능 구역이면 True, 아니면 False**를 /parking_zone_detected 토픽(std_msgs/Bool)으로 발행
+- OpenCV를 통한 검출 결과 시각화 지원(디버깅용)
+> 브랜치: `main/parking_area_detect`
 ## ▶️ 실행 방법
 
 ```bash
@@ -61,3 +68,6 @@ ros2 launch turtlebot3_gazebo turtlebot3_autorace_2020.launch.py
 # Run line detector node (detect yellow line from rear camera)
 ros2 run turtlebot3_dqn line_detector_node
 
+# Run parking area detector node (detect parking area from right camera)
+ros2 run turtlebot3_dqn parking_detect
+```
