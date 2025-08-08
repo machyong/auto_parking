@@ -59,6 +59,7 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 - 결과에 따라 **주차 가능 구역이면 True, 아니면 False**를 /parking_zone_detected 토픽(std_msgs/Bool)으로 발행
 - OpenCV를 통한 검출 결과 시각화 지원(디버깅용)
 > 브랜치: `main/parking_area_detect`
+> main에 병합
 ## ▶️ 실행 방법
 
 ```bash
