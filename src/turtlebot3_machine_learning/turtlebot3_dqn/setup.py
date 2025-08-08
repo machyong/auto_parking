@@ -38,6 +38,8 @@ setup(
             'dqn_gazebo = turtlebot3_dqn.dqn_gazebo:main',
             'dqn_test = turtlebot3_dqn.dqn_test:main',
             'result_graph = turtlebot3_dqn.result_graph:main',
+            'parkingline_detect = turtlebot3_dqn.rear_camera:main',
+            'parking_detector = turtlebot3_dqn.parking_detector:main',
         ],
     },
 )
