@@ -41,13 +41,13 @@ from tensorflow.keras.optimizers import Adam
 
 from turtlebot3_msgs.srv import Dqn
 
-
+#gpu 비활성화 코드
 tensorflow.config.set_visible_devices([], 'GPU')
 
 LOGGING = True
 current_time = datetime.datetime.now().strftime('[%mm%dd-%H:%M]')
 
-
+# 로스값 계산
 class DQNMetric(tensorflow.keras.metrics.Metric):
 
     def __init__(self, name='dqn_metric'):
@@ -71,7 +71,7 @@ class DQNAgent(Node):
 
     def __init__(self, stage_num, max_training_episodes):
         super().__init__('dqn_agent')
-
+        # 학습 관련 기본값
         self.stage = int(stage_num)
         self.train_mode = True
         self.state_size = 26
@@ -257,6 +257,7 @@ class DQNAgent(Node):
 
         return result
 
+    # 
     def step(self, action):
         req = Dqn.Request()
         req.action = action
@@ -279,6 +280,7 @@ class DQNAgent(Node):
 
         return next_state, reward, done
 
+    # 학습 신경망 구조
     def create_qnetwork(self):
         model = Sequential()
         model.add(Input(shape=(self.state_size,)))
@@ -290,15 +292,16 @@ class DQNAgent(Node):
         model.summary()
 
         return model
-
+    #학습의 안정성을 위한 DQN기법
     def update_target_model(self):
         self.target_model.set_weights(self.model.get_weights())
         self.target_update_after_counter = 0
         print('*Target model updated*')
-
+    #행동 결과 저장
     def append_sample(self, transition):
         self.replay_memory.append(transition)
 
+    #학습 실행 함수
     def train_model(self, terminal):
         if len(self.replay_memory) < self.min_replay_memory_size:
             return
