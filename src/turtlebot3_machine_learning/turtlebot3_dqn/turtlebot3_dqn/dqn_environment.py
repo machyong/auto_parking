@@ -29,12 +29,11 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
-from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
-
+from std_srvs.srv import Trigger
 
 ROS_DISTRO = os.environ.get('ROS_DISTRO')
 
@@ -76,8 +75,6 @@ class RLEnvironment(Node):
 
         if ROS_DISTRO == 'humble':
             self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', qos)
-        else:
-            self.cmd_vel_pub = self.create_publisher(TwistStamped, 'cmd_vel', qos)
 
         self.odom_sub = self.create_subscription(
             Odometry,
@@ -85,14 +82,17 @@ class RLEnvironment(Node):
             self.odom_sub_callback,
             qos
         )
-        self.scan_sub = self.create_subscription(
-            LaserScan,
-            'scan',
-            self.scan_sub_callback,
-            qos_profile_sensor_data
-        )
+        
+        ######################## 카메라 3종으로 교체  service client로
+        # self.scan_sub = self.create_subscription(
+        #     LaserScan,
+        #     'scan',
+        #     self.scan_sub_callback,
+        #     qos_profile_sensor_data
+        # )
 
         self.clients_callback_group = MutuallyExclusiveCallbackGroup()
+        
         self.task_succeed_client = self.create_client(
             Goal,
             'task_succeed',
@@ -108,7 +108,11 @@ class RLEnvironment(Node):
             'initialize_env',
             callback_group=self.clients_callback_group
         )
-
+        self.rear_cam_result_client = self.create_client(
+            Trigger,
+            'rear_camera/get_result',
+            callback_group=self.clients_callback_group
+        )
         self.rl_agent_interface_service = self.create_service(
             Dqn,
             'rl_agent_interface',
@@ -124,8 +128,27 @@ class RLEnvironment(Node):
             'reset_environment',
             self.reset_environment_callback
         )
+    def query_rear_camera_result(self):
+        while not self.rear_cam_result_client.wait_for_service(timeout_sec=0.1):
+            self.get_logger().warn(f"service 'rear_camera/get_result' not available, waiting ...")
 
+        req = Trigger.Request()
+
+        future = self.rear_cam_result_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+
+        if future.result() is None:
+            self.get_logger().error(f"rear_camera call failed: {future.exception()}")
+            return None
+
+<<<<<<< Updated upstream
     # initialize_environment_client 실행
+=======
+        res = future.result()
+        value = float(res.message.strip())
+        return value
+        
+>>>>>>> Stashed changes
     def make_environment_callback(self, request, response):
         self.get_logger().info('Make environment called')
         while not self.initialize_environment_client.wait_for_service(timeout_sec=1.0):
@@ -150,7 +173,7 @@ class RLEnvironment(Node):
     def reset_environment_callback(self, request, response):
         state = self.calculate_state()
         self.init_goal_distance = state[0]
-        self.prev_goal_distance = self.init_goal_distance
+        self.prev_goal_distance = self.init_goal_distance #이것만 사용
         response.state = state
 
         return response
@@ -188,6 +211,15 @@ class RLEnvironment(Node):
     #     self.front_ranges = []
     #     self.front_angles = []
 
+<<<<<<< Updated upstream
+=======
+## 카메라 받아서 값 송신 사이드 카메라 service로 agent 시작용 , 후방 카메라 종료후 요청
+    # def scan_sub_callback(self, scan):
+    #     self.scan_ranges = []
+    #     self.front_ranges = []
+    #     self.front_angles = []
+
+>>>>>>> Stashed changes
     #     num_of_lidar_rays = len(scan.ranges)
     #     angle_min = scan.angle_min
     #     angle_increment = scan.angle_increment
@@ -211,6 +243,10 @@ class RLEnvironment(Node):
 
     #     self.min_obstacle_distance = min(self.scan_ranges)
     #     self.front_min_obstacle_distance = min(self.front_ranges) if self.front_ranges else 10.0
+<<<<<<< Updated upstream
+=======
+    # 충돌 감지 함수 필요
+>>>>>>> Stashed changes
 
     # odom 계산
     def odom_sub_callback(self, msg):
@@ -251,9 +287,14 @@ class RLEnvironment(Node):
         state = []
         state.append(float(self.goal_distance))
         state.append(float(self.goal_angle))
+<<<<<<< Updated upstream
         #front_ranges 산출방식 수정 필요
         for var in self.front_ranges:
             state.append(float(var))
+=======
+        # for var in self.front_ranges: 스캔값 변경
+        #     state.append(float(var))
+>>>>>>> Stashed changes
         self.local_step += 1
 
         if self.goal_distance < 0.20:
@@ -262,36 +303,45 @@ class RLEnvironment(Node):
             self.done = True
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(Twist())
-            else:
-                self.cmd_vel_pub.publish(TwistStamped())
             self.local_step = 0
+
+            self.last_rear_result = self.query_rear_camera_result() ######################################################
+
             self.call_task_succeed()
+<<<<<<< Updated upstream
         # self.min_obstacle_distanse 산출방식 수정 필요
         if self.collision_detected == True:
+=======
+
+        if self.min_obstacle_distance < 0.15: # 조건을 odom과 cmdvel 비교로 변경
+>>>>>>> Stashed changes
             self.get_logger().info('Collision happened')
             self.fail = True
             self.done = True
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(Twist())
-            else:
-                self.cmd_vel_pub.publish(TwistStamped())
             self.local_step = 0
             self.call_task_failed()
 
+<<<<<<< Updated upstream
         # 시간초과
         if self.local_step == self.max_step:
+=======
+        if self.local_step == self.max_step: # 최대치 지정
+>>>>>>> Stashed changes
             self.get_logger().info('Time out!')
             self.fail = True
             self.done = True
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(Twist())
-            else:
-                self.cmd_vel_pub.publish(TwistStamped())
+            # else:
+            #     self.cmd_vel_pub.publish(TwistStamped())
             self.local_step = 0
             self.call_task_failed()
 
         return state
 
+<<<<<<< Updated upstream
     #라이더 사용해서 각도 가중치 부여
     def compute_directional_weights(self, relative_angles, max_weight=10.0):
         power = 6
@@ -338,6 +388,12 @@ class RLEnvironment(Node):
         print('directional_reward: %f, obstacle_reward: %f' % (yaw_reward, obstacle_reward))
         reward = yaw_reward + obstacle_reward
 
+=======
+    def calculate_reward(self):
+    
+        
+        reward = float(self.goal_distance) * self.last_rear_result
+>>>>>>> Stashed changes
         if self.succeed:
             reward = 100.0
         elif self.fail:
@@ -349,11 +405,18 @@ class RLEnvironment(Node):
     def rl_agent_interface_callback(self, request, response):
         action = request.action
         if ROS_DISTRO == 'humble':
+<<<<<<< Updated upstream
             msg = Twist()
             msg.linear.x = [action[0]]
             msg.angular.z = self.angular_vel[action[1]]
             self.linear_x = [action[0]]
+=======
+            msg = Twist() 
+            msg.linear.x = 0.2
+            msg.angular.z = self.angular_vel[action]
+>>>>>>> Stashed changes
         self.cmd_vel_pub.publish(msg)
+
         if self.stop_cmd_vel_timer is None:
             self.prev_goal_distance = self.init_goal_distance
             self.stop_cmd_vel_timer = self.create_timer(0.8, self.timer_callback)
@@ -376,8 +439,8 @@ class RLEnvironment(Node):
         self.get_logger().info('Stop called')
         if ROS_DISTRO == 'humble':
             self.cmd_vel_pub.publish(Twist())
-        else:
-            self.cmd_vel_pub.publish(TwistStamped())
+        # else:
+        #     self.cmd_vel_pub.publish(TwistStamped())
         self.destroy_timer(self.stop_cmd_vel_timer)
 
     # odom x,y,z,w값을 방위각 값으로 변환
