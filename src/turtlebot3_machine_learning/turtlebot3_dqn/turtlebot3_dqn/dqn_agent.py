@@ -166,8 +166,8 @@ class DQNAgent(Node):
             local_step = 0
             score = 0
             sum_max_q = 0.0
-
-            time.sleep(1.0)
+            self.get_logger().info(f'Episode : {episode_num}')
+            time.sleep(1.5)
 
             while True:
                 local_step += 1
@@ -276,7 +276,7 @@ class DQNAgent(Node):
 
         return result
 
-    # 
+
     def step(self, action):
         req = Dqn.Request()
         req.action = action
@@ -306,6 +306,7 @@ class DQNAgent(Node):
         model.add(Dense(512, activation='relu'))
         model.add(Dense(256, activation='relu'))
         model.add(Dense(128, activation='relu'))
+        model.add(Dense(32, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
         model.compile(loss=MeanSquaredError(), optimizer=Adam(learning_rate=self.learning_rate))
         model.summary()
@@ -366,7 +367,7 @@ class DQNAgent(Node):
             self.update_target_model()
 
     def parking_sub_callback(self, msg):
-        self.get_logger().info(f'parking_detect : {self.parking_detect}')
+        # self.get_logger().info(f'parking_detect : {self.parking_detect}')
         if self.parking_detect == True:
             return
         else:

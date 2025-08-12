@@ -34,6 +34,8 @@ from std_srvs.srv import Empty
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
 from std_msgs.msg import Float64
+from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
+
 
 ROS_DISTRO = os.environ.get('ROS_DISTRO')
 
@@ -58,12 +60,16 @@ class RLEnvironment(Node):
 
         self.goal_angle = 0.0
         self.goal_distance = 1.0
-        self.linear_x = 0.0
         self.init_goal_distance = 0.5
         self.scan_ranges = []
         self.front_ranges = []
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
+
+        # 충돌센서 변수 추가
+        self.bumper_in_contact = False
+        self.bumper_force_norm = 0.0
+        self.bumper_max_depth = 0.0
 
 
         self.local_step = 0
@@ -130,10 +136,19 @@ class RLEnvironment(Node):
             'reset_environment',
             self.reset_environment_callback
         )
-    
+
+        # 충돌센서 토픽 추가
+        self.bumper_sub = self.create_subscription(
+            ContactsState,
+            '/bumper_states',
+            self.bumper_sub_callback,
+            qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
+        )
+
+
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
-        
+
     def make_environment_callback(self, request, response):
         self.get_logger().info('Make environment called')
         while not self.initialize_environment_client.wait_for_service(timeout_sec=1.0):
@@ -212,45 +227,71 @@ class RLEnvironment(Node):
 
         self.goal_distance = goal_distance
         self.goal_angle = goal_angle
+    
+    # 충돌 감지 콜백함수 추가
+    def bumper_sub_callback(self, msg: ContactsState):
+        # 기본: states가 비어있지 않으면 접촉 중
+        in_contact = len(msg.states) > 0
 
-        odom_linear_speed = msg.twist.twist.linear.x
+        force_norm = 0.0
+        max_depth = 0.0
 
-        # 최근에 보낸 cmd_vel 명령 저장 변수 필요
-        # 예: self.last_cmd_linear_speed 가 rl_agent_interface_callback에서 저장되도록
-        speed_diff = abs(self.linear_x - odom_linear_speed)
+        for st in msg.states:
+            # total_wrench.force 크기(뉴턴)
+            fx = st.total_wrench.force.x
+            fy = st.total_wrench.force.y
+            fz = st.total_wrench.force.z
+            fn = (fx**2 + fy**2 + fz**2) ** 0.5
+            force_norm = max(force_norm, fn)
 
-        # 일정 기준 이상 속도 차이가 크면 충돌로 판단
-        self.get_logger().info(f'{self.linear_x} and {odom_linear_speed} and {speed_diff}')
-        if self.linear_x > 0.05 and odom_linear_speed < 0.01 and speed_diff > 0.05:
-            self.collision_detected = True
-            
-        else:
-            self.collision_detected = False
+            # depths가 비어있지 않으면 최대 관입 깊이 추출
+            if st.depths:
+                max_depth = max(max_depth, max(st.depths))
+
+        # 간단 버전: states가 비어있지 않으면 True
+        # 보수적 버전(노이즈 필터링): force_norm > 0.5 N 또는 max_depth > 1e-5 m
+        CONTACT_FORCE_THRESHOLD = 0.5
+        CONTACT_DEPTH_THRESHOLD = 1e-5
+
+        self.bumper_in_contact = in_contact and (
+            (force_norm > CONTACT_FORCE_THRESHOLD) or (max_depth > CONTACT_DEPTH_THRESHOLD)
+        )
+        self.bumper_force_norm = force_norm
+        self.bumper_max_depth = max_depth
 
     def calculate_state(self):
         state = []
         state.append(float(self.goal_distance))
         state.append(float(self.parkingline_ratio))
         self.local_step += 1
+        self.get_logger().info(f'current step : {self.local_step}')
 
         if self.goal_distance < 0.1:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
+            msg = Twist() 
+            msg.linear.x = 0.
+            msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(Twist())
+                self.cmd_vel_pub.publish(msg)
             self.local_step = 0
 
             self.call_task_succeed()
         # self.min_obstacle_distanse 산출방식 수정 필요
-        if self.collision_detected == True:
+        if self.bumper_in_contact:  # Contact Sensor 충돌 조건
             self.get_logger().info('Collision happened')
             self.fail = True
             self.done = True
+            msg = Twist() 
+            msg.linear.x = 0.
+            msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(Twist())
+                
+                self.cmd_vel_pub.publish(msg)
+            else:
+                self.cmd_vel_pub.publish(TwistStamped())
             self.local_step = 0
-            self.linear_x = 0.
             self.call_task_failed()
 
         # 시간초과
@@ -258,8 +299,11 @@ class RLEnvironment(Node):
             self.get_logger().info('Time out!')
             self.fail = True
             self.done = True
+            msg = Twist() 
+            msg.linear.x = 0.
+            msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(Twist())
+                self.cmd_vel_pub.publish(msg)
             # else:
             #     self.cmd_vel_pub.publish(TwistStamped())
             self.local_step = 0
@@ -271,7 +315,7 @@ class RLEnvironment(Node):
         reward = 1.0 - float(self.goal_distance)*2 - float(self.parkingline_ratio)*0.4 - float(self.local_step/self.max_step)*0.15
         if self.parkingline_ratio < 0.6:
             reward = 0.0
-        self.get_logger().info(f'reward{reward},distance{self.goal_distance},ratio{self.parkingline_ratio}')
+        # self.get_logger().info(f'reward{reward},distance{self.goal_distance},ratio{self.parkingline_ratio}')
         return reward
 
     # 로봇 동작 수행
@@ -281,7 +325,6 @@ class RLEnvironment(Node):
             msg = Twist() 
             msg.linear.x = self.angular_vel[action][0]
             msg.angular.z = self.angular_vel[action][1]
-            self.linear_x = self.angular_vel[action][0]
         self.cmd_vel_pub.publish(msg)
 
         if self.stop_cmd_vel_timer is None:
