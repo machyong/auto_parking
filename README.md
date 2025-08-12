@@ -62,7 +62,9 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 - main에 병합 완료
 ## ▶️ 실행 방법
 
+
 ```bash
+# bashrc
 function MLmaplaunch() {
 	cd ~/auto_parking
 	. install/setup.bash
