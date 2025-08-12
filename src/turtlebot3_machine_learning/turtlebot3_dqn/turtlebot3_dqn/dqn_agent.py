@@ -145,7 +145,7 @@ class DQNAgent(Node):
             Bool,
             '/parking_zone_detected',
             self.parking_sub_callback,
-            1,
+            10,
             callback_group=self.cb_group
         )
         self.worker_thread = threading.Thread(
@@ -366,11 +366,7 @@ class DQNAgent(Node):
             self.update_target_model()
 
     def parking_sub_callback(self, msg):
-        self.get_logger().info(f'parking_detect : {self.parking_detect}')
-        if self.parking_detect == True:
-            return
-        else:
-            self.parking_detect = msg.data
+        self.parking_detect = msg.data
 
 def main(args=None):
     if args is None:

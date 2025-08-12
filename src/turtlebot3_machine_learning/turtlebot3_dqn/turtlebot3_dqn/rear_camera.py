@@ -49,7 +49,6 @@ class YellowLineDetector(Node):
         roi = mask[int(h * 0.8):, :]
 
         yellow_ratio = cv2.countNonZero(roi) / roi.size
-        self.get_logger().info(f"Yellow ratio in ROI: {yellow_ratio:.3f}")
         msg = Float64()
         msg.data = float(yellow_ratio)
         self.ratio.publish(msg)
