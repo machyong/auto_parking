@@ -19,7 +19,7 @@
 
 import math
 import os
-
+import time
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
@@ -220,8 +220,10 @@ class RLEnvironment(Node):
         speed_diff = abs(self.linear_x - odom_linear_speed)
 
         # 일정 기준 이상 속도 차이가 크면 충돌로 판단
+        self.get_logger().info(f'{self.linear_x} and {odom_linear_speed} and {speed_diff}')
         if self.linear_x > 0.05 and odom_linear_speed < 0.01 and speed_diff > 0.05:
             self.collision_detected = True
+            
         else:
             self.collision_detected = False
 
@@ -248,6 +250,7 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(Twist())
             self.local_step = 0
+            self.linear_x = 0.
             self.call_task_failed()
 
         # 시간초과
@@ -278,6 +281,7 @@ class RLEnvironment(Node):
             msg = Twist() 
             msg.linear.x = self.angular_vel[action][0]
             msg.angular.z = self.angular_vel[action][1]
+            self.linear_x = self.angular_vel[action][0]
         self.cmd_vel_pub.publish(msg)
 
         if self.stop_cmd_vel_timer is None:
