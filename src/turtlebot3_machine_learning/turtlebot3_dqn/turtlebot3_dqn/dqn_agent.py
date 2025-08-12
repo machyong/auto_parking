@@ -29,7 +29,7 @@ import time
 import numpy
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Bool
 from std_srvs.srv import Empty
 import tensorflow
 from tensorflow.keras.layers import Dense
@@ -101,6 +101,7 @@ class DQNAgent(Node):
 
         self.load_model = False
         self.load_episode = 0
+        self.parking_detect = False
         self.model_dir_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
             'saved_model'
@@ -135,7 +136,7 @@ class DQNAgent(Node):
 
         self.action_pub = self.create_publisher(Float32MultiArray, '/get_action', 10)
         self.result_pub = self.create_publisher(Float32MultiArray, 'result', 10)
-
+        self.parking_sub = self.create_subscription(Bool,'/parking_zone_detected', self.parking_sub_callback, 10)
         self.process()
 
     def process(self):
@@ -146,6 +147,7 @@ class DQNAgent(Node):
 
         for episode in range(self.load_episode + 1, self.max_training_episodes + 1):
             state = self.reset_environment()
+            self.parking_detect = False
             episode_num += 1
             local_step = 0
             score = 0
@@ -243,17 +245,20 @@ class DQNAgent(Node):
         return state
 
     def get_action(self, state):
-        if self.train_mode:
-            self.step_counter += 1
-            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                -1.0 * self.step_counter / self.epsilon_decay)
-            lucky = random.random()
-            if lucky > (1 - self.epsilon):
-                result = random.randint(0, self.action_size - 1)
+        if self.parking_detect == False:
+            result = 2
+        else:
+            if self.train_mode:
+                self.step_counter += 1
+                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                    -1.0 * self.step_counter / self.epsilon_decay)
+                lucky = random.random()
+                if lucky > (1 - self.epsilon):
+                    result = random.randint(0, self.action_size - 1)
+                else:
+                    result = numpy.argmax(self.model.predict(state))
             else:
                 result = numpy.argmax(self.model.predict(state))
-        else:
-            result = numpy.argmax(self.model.predict(state))
 
         return result
 
@@ -346,6 +351,11 @@ class DQNAgent(Node):
         if self.target_update_after_counter > self.update_target_after and terminal:
             self.update_target_model()
 
+    def parking_sub_callback(self, msg):
+        if self.parking_detect == True:
+            return
+        else:
+            self.parking_detect = Bool(msg.data)
 
 def main(args=None):
     if args is None:
