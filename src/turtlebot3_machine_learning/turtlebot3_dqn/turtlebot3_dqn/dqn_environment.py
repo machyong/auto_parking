@@ -33,7 +33,7 @@ from std_srvs.srv import Empty
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Bool
 
 ROS_DISTRO = os.environ.get('ROS_DISTRO')
 
@@ -55,7 +55,7 @@ class RLEnvironment(Node):
         self.fail = False
         self.succeed = False
         self.parkingline_ratio = 0.0
-
+        self.collisoin_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
         self.linear_x = 0.0
@@ -97,6 +97,14 @@ class RLEnvironment(Node):
             self.ratio_callback,
             10
         )
+
+        self.collision_flag = self.create_subscription(
+            Bool, 
+            '/collision/flag',
+            self.collision_flag_callback,
+            10
+        )
+
         self.clients_callback_group = MutuallyExclusiveCallbackGroup()
         
         self.task_succeed_client = self.create_client(
@@ -133,7 +141,10 @@ class RLEnvironment(Node):
     
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
-        
+
+    def collision_flag_callback(self,msg):
+        self.collision_flag = msg.data
+
     def make_environment_callback(self, request, response):
         self.get_logger().info('Make environment called')
         while not self.initialize_environment_client.wait_for_service(timeout_sec=1.0):
@@ -156,6 +167,7 @@ class RLEnvironment(Node):
 
     # dqn_agent에서 학습 끝나고 다음 에피소드를 시작할 때 호출
     def reset_environment_callback(self, request, response):
+        self.cmd_vel_pub.publish(Twist())
         state = self.calculate_state()
         self.init_goal_distance = state[0]
         self.prev_goal_distance = self.init_goal_distance #이것만 사용
@@ -213,19 +225,6 @@ class RLEnvironment(Node):
         self.goal_distance = goal_distance
         self.goal_angle = goal_angle
 
-        odom_linear_speed = msg.twist.twist.linear.x
-
-        # 최근에 보낸 cmd_vel 명령 저장 변수 필요
-        # 예: self.last_cmd_linear_speed 가 rl_agent_interface_callback에서 저장되도록
-        speed_diff = abs(self.linear_x - odom_linear_speed)
-
-        # 일정 기준 이상 속도 차이가 크면 충돌로 판단
-        self.get_logger().info(f'{self.linear_x} and {odom_linear_speed} and {speed_diff}')
-        if self.linear_x > 0.05 and odom_linear_speed < 0.01 and speed_diff > 0.05:
-            self.collision_detected = True
-            
-        else:
-            self.collision_detected = False
 
     def calculate_state(self):
         state = []
@@ -243,7 +242,7 @@ class RLEnvironment(Node):
 
             self.call_task_succeed()
         # self.min_obstacle_distanse 산출방식 수정 필요
-        if self.collision_detected == True:
+        if self.collision_flag == True:
             self.get_logger().info('Collision happened')
             self.fail = True
             self.done = True
@@ -271,7 +270,6 @@ class RLEnvironment(Node):
         reward = 1.0 - float(self.goal_distance)*2 - float(self.parkingline_ratio)*0.4 - float(self.local_step/self.max_step)*0.15
         if self.parkingline_ratio < 0.6:
             reward = 0.0
-        self.get_logger().info(f'reward{reward},distance{self.goal_distance},ratio{self.parkingline_ratio}')
         return reward
 
     # 로봇 동작 수행
