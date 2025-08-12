@@ -63,13 +63,18 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 ## ▶️ 실행 방법
 
 ```bash
-# Launch Gazebo with rear camera
-ros2 launch turtlebot3_gazebo turtlebot3_autorace_2020.launch.py
+function MLmaplaunch() {
+	cd ~/auto_parking
+	. install/setup.bash
+	ros2 launch turtlebot3_dqn gazebo.launch.py
+	}
 
-# Run line detector node (detect yellow line from rear camera)
-ros2 run turtlebot3_dqn parkingline_detect
+# Launch Gazebo with gazebo_init, rear camera, right camera
+MLmaplaunch
+# Run environment node
+ros2 run turtlebot3_dqn dqn_environment
 
-# Run parking area detector node (detect parking area from right camera)
-ros2 run turtlebot3_dqn parking_detect
+# Run agent node
+ros2 run turtlebot3_dqn dqn_agent
 ```
 
