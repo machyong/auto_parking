@@ -48,7 +48,7 @@ class RLEnvironment(Node):
         self.robot_pose_y = 0.0
 
         # self.action_size = 5
-        self.action_size = 15
+        self.action_size = 11
         self.max_step = 800
 
         self.done = False
@@ -69,9 +69,9 @@ class RLEnvironment(Node):
         self.local_step = 0
         self.stop_cmd_vel_timer = None
         # self.angular_vel = [1.5, 0.75, 0.0, -0.75, -1.5]
-        self.angular_vel = [[0.3, 1.5], [0.3, 0.75], [0.3, 0.0], [0.3, -0.75], [0.3, -1.5],
-                            [0.0, 1.5], [0.0, 0.75], [0.0, 0.0], [0.0, -0.75], [0.0, -1.5],
-                            [-0.3, 1.5], [-0.3, 0.75], [-0.3, 0.0], [-0.3, -0.75], [-0.3, -1.5]]
+        self.angular_vel = [[0.1, 1.5], [0.1, 0.75], [0.1, 0.0], [0.1, -0.75], [0.1, -1.5],
+                            [0.0, 0.0],
+                            [-0.1, 1.5], [-0.1, 0.75], [-0.1, 0.0], [-0.1, -0.75], [-0.1, -1.5]]
         qos = QoSProfile(depth=10)
 
         if ROS_DISTRO == 'humble':
@@ -265,9 +265,9 @@ class RLEnvironment(Node):
         return state
 
     def calculate_reward(self):
-        reward = 1 - float(self.goal_distance)*2 - (self.parkingline_ratio)*0.4 - (self.local_step/self.max_step)*0.15
+        reward = 1.0 - float(self.goal_distance)*2 - float(self.parkingline_ratio)*0.4 - float(self.local_step/self.max_step)*0.15
         if self.parkingline_ratio < 0.6:
-            reward = 0
+            reward = 0.0
         self.get_logger().info(f'reward{reward},distance{self.goal_distance},ratio{self.parkingline_ratio}')
         return reward
 
@@ -276,16 +276,16 @@ class RLEnvironment(Node):
         action = request.action
         if ROS_DISTRO == 'humble':
             msg = Twist() 
-            msg.linear.x = 0.2
-            msg.angular.z = self.angular_vel[action]
+            msg.linear.x = self.angular_vel[action][0]
+            msg.angular.z = self.angular_vel[action][1]
         self.cmd_vel_pub.publish(msg)
 
         if self.stop_cmd_vel_timer is None:
             self.prev_goal_distance = self.init_goal_distance
-            self.stop_cmd_vel_timer = self.create_timer(0.8, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
         else:
             self.destroy_timer(self.stop_cmd_vel_timer)
-            self.stop_cmd_vel_timer = self.create_timer(0.8, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
 
         response.state = self.calculate_state()
         response.reward = self.calculate_reward()

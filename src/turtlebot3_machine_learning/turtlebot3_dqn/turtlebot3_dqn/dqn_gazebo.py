@@ -36,8 +36,8 @@ class GazeboInterface(Node):
     def __init__(self):
         super().__init__('gazebo_interface')
         
-        self.entity_pose_x = 0.5
-        self.entity_pose_y = 1.844
+        self.entity_pose_x = 0.25
+        self.entity_pose_y = 1.1905
 
         if ROS_DISTRO == 'humble':
             self.reset_simulation_client = self.create_client(Empty, 'reset_simulation')
@@ -96,8 +96,7 @@ class GazeboInterface(Node):
 
 def main(args=None):
     rclpy.init(args=sys.argv)
-    stage_num = sys.argv[1] if len(sys.argv) > 1 else '1'
-    gazebo_interface = GazeboInterface(stage_num)
+    gazebo_interface = GazeboInterface()
     try:
         while rclpy.ok():
             rclpy.spin_once(gazebo_interface, timeout_sec=0.1)
