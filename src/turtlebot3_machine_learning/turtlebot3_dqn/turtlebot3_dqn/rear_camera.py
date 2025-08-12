@@ -9,7 +9,7 @@ import numpy as np
 
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool
-
+from std_msgs.msg import Float64
 class YellowLineDetector(Node):
     def __init__(self):
         super().__init__('yellow_line_detector')
@@ -23,15 +23,16 @@ class YellowLineDetector(Node):
             10
         )
 
-        self.complete_pub = self.create_publisher(
-            Bool,
-            '/line_detect/complete',
-            10
-        )
+        # self.complete_pub = self.create_publisher(
+        #     Bool,
+        #     '/line_detect/complete',
+        #     10
+        # )
 
         # 디버깅용 이미지 퍼블리셔
-        self.mask_pub = self.create_publisher(Image, '/debug/mask_image', 10)
-        self.roi_pub = self.create_publisher(Image, '/debug/roi_image', 10)
+        # self.mask_pub = self.create_publisher(Image, '/debug/mask_image', 10)
+        # self.roi_pub = self.create_publisher(Image, '/debug/roi_image', 10)
+        self.ratio = self.create_publisher(Float64, '/rear/ratio',10)
 
         self.get_logger().info("✅ Yellow line detector with debug image publisher initialized.")
 
@@ -49,29 +50,31 @@ class YellowLineDetector(Node):
 
         yellow_ratio = cv2.countNonZero(roi) / roi.size
         self.get_logger().info(f"Yellow ratio in ROI: {yellow_ratio:.3f}")
-    
-
+        msg = Float64()
+        msg.data = float(yellow_ratio)
+        self.ratio.publish(msg)
+        
         # 완료 판단
-        if yellow_ratio > 0.6:
-            msg = Bool()
-            msg.data = True
-            self.complete_pub.publish(msg)
-            self.get_logger().info("✅ Line detected! Published complete = True.")
-        else:
-            msg = Bool()
-            msg.data = False
-            self.complete_pub.publish(msg)
-            self.get_logger().info("Line not detected! Published complete = False.")
+        # if yellow_ratio > 0.6:
+        #     msg = Bool()
+        #     msg.data = True
+        #     self.complete_pub.publish(msg)
+        #     self.get_logger().info("✅ Line detected! Published complete = True.")
+        # else:
+        #     msg = Bool()
+        #     msg.data = False
+        #     self.complete_pub.publish(msg)
+        #     self.get_logger().info("Line not detected! Published complete = False.")
 
         # 디버깅 이미지 퍼블리시
-        mask_msg = self.bridge.cv2_to_imgmsg(mask, encoding='mono8')
-        roi_colored = np.zeros_like(frame)
-        roi_colored[int(h * 0.8):, :] = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-        roi_msg = self.bridge.cv2_to_imgmsg(roi_colored, encoding='bgr8')
-
-        self.mask_pub.publish(mask_msg)
-        self.roi_pub.publish(roi_msg)
-
+        # mask_msg = self.bridge.cv2_to_imgmsg(mask, encoding='mono8')
+        # roi_colored = np.zeros_like(frame)
+        # roi_colored[int(h * 0.8):, :] = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+        # roi_msg = self.bridge.cv2_to_imgmsg(roi_colored, encoding='bgr8')
+        
+        # self.mask_pub.publish(mask_msg)
+        # self.roi_pub.publish(roi_msg)
+    
 def main(args=None):
     rclpy.init(args=args)
     node = YellowLineDetector()

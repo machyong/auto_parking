@@ -29,7 +29,7 @@ import time
 import numpy
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Bool
 from std_srvs.srv import Empty
 import tensorflow
 from tensorflow.keras.layers import Dense
@@ -40,6 +40,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
 
 from turtlebot3_msgs.srv import Dqn
+# 추가 import
+import threading
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 
 #gpu 비활성화 코드
 tensorflow.config.set_visible_devices([], 'GPU')
@@ -69,27 +73,25 @@ class DQNMetric(tensorflow.keras.metrics.Metric):
 
 class DQNAgent(Node):
 
-    def __init__(self, stage_num, max_training_episodes):
+    def __init__(self, max_training_episodes=100):
         super().__init__('dqn_agent')
         # 학습 관련 기본값
-        self.stage = int(stage_num)
         self.train_mode = True
-        self.state_size = 26
-        self.action_size = 5
+        self.state_size = 2
+        self.action_size = 11
         self.max_training_episodes = int(max_training_episodes)
 
         self.done = False
         self.succeed = False
         self.fail = False
-
         self.discount_factor = 0.99
         self.learning_rate = 0.0007
         self.epsilon = 1.0
         self.step_counter = 0
-        self.epsilon_decay = 6000 * self.stage
+        self.epsilon_decay = 6000  # * self.stage
         self.epsilon_min = 0.05
         self.batch_size = 128
-
+        
         self.replay_memory = collections.deque(maxlen=500000)
         self.min_replay_memory_size = 5000
 
@@ -101,27 +103,28 @@ class DQNAgent(Node):
 
         self.load_model = False
         self.load_episode = 0
+        self.parking_detect = False
         self.model_dir_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
             'saved_model'
         )
-        self.model_path = os.path.join(
-            self.model_dir_path,
-            'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
-        )
+        # self.model_path = os.path.join(
+        #     self.model_dir_path,
+        #     'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
+        # )
 
-        if self.load_model:
-            self.model.set_weights(load_model(self.model_path).get_weights())
-            with open(os.path.join(
-                self.model_dir_path,
-                'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.json'
-            )) as outfile:
-                param = json.load(outfile)
-                self.epsilon = param.get('epsilon')
-                self.step_counter = param.get('step_counter')
+        # if self.load_model:
+        #     self.model.set_weights(load_model(self.model_path).get_weights())
+        #     with open(os.path.join(
+        #         self.model_dir_path,
+        #         'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.json'
+        #     )) as outfile:
+        #         param = json.load(outfile)
+        #         self.epsilon = param.get('epsilon')
+        #         self.step_counter = param.get('step_counter')
 
         if LOGGING:
-            tensorboard_file_name = current_time + ' dqn_stage' + str(self.stage) + '_reward'
+            tensorboard_file_name = current_time + ' dqn_stage' + '_reward'
             home_dir = os.path.expanduser('~')
             dqn_reward_log_dir = os.path.join(
                 home_dir, 'turtlebot3_dqn_logs', 'gradient_tape', tensorboard_file_name
@@ -136,7 +139,19 @@ class DQNAgent(Node):
         self.action_pub = self.create_publisher(Float32MultiArray, '/get_action', 10)
         self.result_pub = self.create_publisher(Float32MultiArray, 'result', 10)
 
-        self.process()
+        self.cb_group = ReentrantCallbackGroup()
+        # 구독: 콜백그룹 지정
+        self.parking_sub = self.create_subscription(
+            Bool,
+            '/parking_zone_detected',
+            self.parking_sub_callback,
+            1,
+            callback_group=self.cb_group
+        )
+        self.worker_thread = threading.Thread(
+            target=self.process, daemon=True
+        )
+        self.worker_thread.start()
 
     def process(self):
         self.env_make()
@@ -146,6 +161,7 @@ class DQNAgent(Node):
 
         for episode in range(self.load_episode + 1, self.max_training_episodes + 1):
             state = self.reset_environment()
+            self.parking_detect = False
             episode_num += 1
             local_step = 0
             score = 0
@@ -205,12 +221,12 @@ class DQNAgent(Node):
                 if episode % 100 == 0:
                     self.model_path = os.path.join(
                         self.model_dir_path,
-                        'stage' + str(self.stage) + '_episode' + str(episode) + '.h5')
+                        '_episode' + str(episode) + '.h5')
                     self.model.save(self.model_path)
                     with open(
                         os.path.join(
                             self.model_dir_path,
-                            'stage' + str(self.stage) + '_episode' + str(episode) + '.json'
+                            '_episode' + str(episode) + '.json'
                         ),
                         'w'
                     ) as outfile:
@@ -243,17 +259,20 @@ class DQNAgent(Node):
         return state
 
     def get_action(self, state):
-        if self.train_mode:
-            self.step_counter += 1
-            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                -1.0 * self.step_counter / self.epsilon_decay)
-            lucky = random.random()
-            if lucky > (1 - self.epsilon):
-                result = random.randint(0, self.action_size - 1)
+        if self.parking_detect == False:
+            result = 2
+        else:
+            if self.train_mode:
+                self.step_counter += 1
+                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                    -1.0 * self.step_counter / self.epsilon_decay)
+                lucky = random.random()
+                if lucky > (1 - self.epsilon):
+                    result = random.randint(0, self.action_size - 1)
+                else:
+                    result = numpy.argmax(self.model.predict(state))
             else:
                 result = numpy.argmax(self.model.predict(state))
-        else:
-            result = numpy.argmax(self.model.predict(state))
 
         return result
 
@@ -346,19 +365,30 @@ class DQNAgent(Node):
         if self.target_update_after_counter > self.update_target_after and terminal:
             self.update_target_model()
 
+    def parking_sub_callback(self, msg):
+        self.get_logger().info(f'parking_detect : {self.parking_detect}')
+        if self.parking_detect == True:
+            return
+        else:
+            self.parking_detect = msg.data
 
 def main(args=None):
     if args is None:
         args = sys.argv
-    stage_num = args[1] if len(args) > 1 else '1'
     max_training_episodes = args[2] if len(args) > 2 else '1000'
     rclpy.init(args=args)
 
-    dqn_agent = DQNAgent(stage_num, max_training_episodes)
-    rclpy.spin(dqn_agent)
+    dqn_agent = DQNAgent(max_training_episodes)
 
-    dqn_agent.destroy_node()
-    rclpy.shutdown()
+    # 단일스레드 스핀 대신 멀티스레드 실행기 사용
+    executor = MultiThreadedExecutor(num_threads=os.cpu_count() or 4)
+    executor.add_node(dqn_agent)
+    try:
+        executor.spin()
+    finally:
+        dqn_agent.destroy_node()
+        rclpy.shutdown()
+
 
 
 if __name__ == '__main__':

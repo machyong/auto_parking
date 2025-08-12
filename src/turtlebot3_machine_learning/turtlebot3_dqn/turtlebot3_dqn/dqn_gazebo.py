@@ -1,3 +1,23 @@
+#!/usr/bin/env python3
+#################################################################################
+# Copyright 2019 ROBOTIS CO., LTD.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#################################################################################
+#
+# # Authors: Ryan Shim, Gilbert, ChanHyeong Lee
+
+import os
 import sys
 import time
 
@@ -9,15 +29,18 @@ from std_srvs.srv import Empty
 from turtlebot3_msgs.srv import Goal
 
 
+ROS_DISTRO = os.environ.get('ROS_DISTRO')
 
 class GazeboInterface(Node):
 
     def __init__(self):
         super().__init__('gazebo_interface')
-        self.entity_pose_x = 0.5
-        self.entity_pose_y = 1.844
+        
+        self.entity_pose_x = 0.25
+        self.entity_pose_y = 1.1905
 
-        self.reset_simulation_client = self.create_client(Empty, 'reset_simulation')
+        if ROS_DISTRO == 'humble':
+            self.reset_simulation_client = self.create_client(Empty, 'reset_simulation')
 
         self.callback_group = MutuallyExclusiveCallbackGroup()
         self.initialize_env_service = self.create_service(
@@ -39,7 +62,6 @@ class GazeboInterface(Node):
             callback_group=self.callback_group
         )
 
-    # 리셋 [켜져있는 가제보 맵을 리셋]
     def reset_simulation(self):
         reset_req = Empty.Request()
 
@@ -47,18 +69,16 @@ class GazeboInterface(Node):
             self.get_logger().warn('service for reset_simulation is not available, waiting ...')
 
         self.reset_simulation_client.call_async(reset_req)
-   
-    # 성공시 새로운 목표 좌표 지정
+
     def task_succeed_callback(self, request, response):
-        time.sleep(0.2)
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
         return response
     # 실패시 새로운 목표 좌표 지정
     def task_failed_callback(self, request, response):
-        time.sleep(0.2)
-        self.reset_simulation()
+        if ROS_DISTRO == 'humble':
+            self.reset_simulation()
         time.sleep(0.2)
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
@@ -66,9 +86,9 @@ class GazeboInterface(Node):
         return response
 
     def initialize_env_callback(self, request, response):
-        self.reset_simulation()
+        if ROS_DISTRO == 'humble':
+            self.reset_simulation()
         time.sleep(0.2)
-        self.spawn_entity()
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
@@ -76,8 +96,7 @@ class GazeboInterface(Node):
 
 def main(args=None):
     rclpy.init(args=sys.argv)
-    stage_num = sys.argv[1] if len(sys.argv) > 1 else '1'
-    gazebo_interface = GazeboInterface(stage_num)
+    gazebo_interface = GazeboInterface()
     try:
         while rclpy.ok():
             rclpy.spin_once(gazebo_interface, timeout_sec=0.1)
