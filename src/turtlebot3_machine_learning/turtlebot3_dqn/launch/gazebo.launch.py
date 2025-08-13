@@ -38,11 +38,17 @@ def generate_launch_description():
         name='right_camera_detector',
         output='screen'
     )
-
+    collision = Node(
+        package='turtlebot3_dqn',
+        executable='collision',
+        name='collision',
+        output='screen'
+    )
     # 3) LaunchDescription에 전부 추가
     return LaunchDescription([
         include_other_launch,
         gazebo_set,
         rear_camera_detector,
-        right_camera_detector
+        right_camera_detector,
+        collision
     ])

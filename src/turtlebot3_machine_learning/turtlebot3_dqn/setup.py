@@ -40,6 +40,8 @@ setup(
             'result_graph = turtlebot3_dqn.result_graph:main',
             'parkingline_detect = turtlebot3_dqn.rear_camera:main',
             'parking_detector = turtlebot3_dqn.parking_detector:main',
+            'collision = turtlebot3_dqn.collision:main',
+
         ],
     },
 )

@@ -339,7 +339,7 @@
     </audio>
     <wind/>
     <model name='barrier_3_clone'>
-      <static>true</static>
+      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -442,7 +442,7 @@
       <pose>0.207519 0.92785 0.149991 1e-06 -2e-06 2.6e-05</pose>
     </model>
     <model name='barrier_3_clone_clone'>
-      <static>true</static>
+      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -545,7 +545,7 @@
       <pose>0.244482 1.46033 0.105092 -4e-06 2e-06 3.4e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_0'>
-      <static>true</static>
+      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -648,7 +648,7 @@
       <pose>0.744904 0.931438 0.105092 -4e-06 2e-06 3.4e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_1'>
-      <static>true</static>
+      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -751,7 +751,7 @@
       <pose>0.746829 1.19557 0.105092 4e-06 2e-06 3.3e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_2'>
-      <static>true</static>
+      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>

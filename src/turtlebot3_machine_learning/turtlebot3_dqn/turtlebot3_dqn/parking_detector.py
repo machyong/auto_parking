@@ -44,20 +44,21 @@ class ParkingZoneDetector(Node):
             # 넓이가 ROI의 40% 이상인 사각형만 주차구역으로 인정
             if len(approx) == 4 and area > 2000 and area > roi_area * 0.4:
                 parking_zone_found = True
-                cv2.drawContours(roi, [approx], 0, (0, 255, 0), 2)
-                cv2.putText(roi, "parking area", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+                # cv2.drawContours(roi, [approx], 0, (0, 255, 0), 2)
+                # cv2.putText(roi, "parking area", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
                 break
 
-        if not parking_zone_found:
-            cv2.putText(roi, "Looking for it", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+        # if not parking_zone_found:
+        #     cv2.putText(roi, "Looking for it", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
         # 퍼블리시 (Bool)
         bool_msg = Bool()
         bool_msg.data = parking_zone_found
-        self.bool_pub.publish(bool_msg)
+        if parking_zone_found == True:
+            self.bool_pub.publish(bool_msg)
 
-        cv2.imshow("Parking Zone Result", roi)
-        cv2.waitKey(1)
+        # cv2.imshow("Parking Zone Result", roi)
+        # cv2.waitKey(1)
 
 
 def main(args=None):

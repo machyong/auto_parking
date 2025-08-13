@@ -77,6 +77,8 @@ class GazeboInterface(Node):
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
+        self.reset_simulation()
+        time.sleep(0.2)
         return response
     # 실패시 새로운 목표 좌표 지정
     def task_failed_callback(self, request, response):

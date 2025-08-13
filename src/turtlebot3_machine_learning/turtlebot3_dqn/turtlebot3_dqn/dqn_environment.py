@@ -33,9 +33,12 @@ from std_srvs.srv import Empty
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
+
 from std_msgs.msg import Float64
 from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
 
+
+from std_msgs.msg import Float64, Bool
 
 ROS_DISTRO = os.environ.get('ROS_DISTRO')
 
@@ -57,7 +60,7 @@ class RLEnvironment(Node):
         self.fail = False
         self.succeed = False
         self.parkingline_ratio = 0.0
-
+        self.collisoin_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
         self.init_goal_distance = 0.5
@@ -103,6 +106,14 @@ class RLEnvironment(Node):
             self.ratio_callback,
             10
         )
+
+        self.collision_flag = self.create_subscription(
+            Bool, 
+            '/collision/flag',
+            self.collision_flag_callback,
+            10
+        )
+
         self.clients_callback_group = MutuallyExclusiveCallbackGroup()
         
         self.task_succeed_client = self.create_client(
@@ -148,6 +159,9 @@ class RLEnvironment(Node):
 
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
+
+    def collision_flag_callback(self,msg):
+        self.collision_flag = msg.data
 
     def make_environment_callback(self, request, response):
         self.get_logger().info('Make environment called')
@@ -227,7 +241,7 @@ class RLEnvironment(Node):
 
         self.goal_distance = goal_distance
         self.goal_angle = goal_angle
-    
+        
     # 충돌 감지 콜백함수 추가
     def bumper_sub_callback(self, msg: ContactsState):
         # 기본: states가 비어있지 않으면 접촉 중
@@ -279,7 +293,8 @@ class RLEnvironment(Node):
 
             self.call_task_succeed()
         # self.min_obstacle_distanse 산출방식 수정 필요
-        if self.bumper_in_contact:  # Contact Sensor 충돌 조건
+        if self.bumper_in_contact:  # Contact Sensor 충돌 조
+        if self.collision_flag == True:
             self.get_logger().info('Collision happened')
             self.fail = True
             self.done = True
@@ -287,10 +302,8 @@ class RLEnvironment(Node):
             msg.linear.x = 0.
             msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
-                
                 self.cmd_vel_pub.publish(msg)
-            else:
-                self.cmd_vel_pub.publish(TwistStamped())
+
             self.local_step = 0
             self.call_task_failed()
 
@@ -315,7 +328,6 @@ class RLEnvironment(Node):
         reward = 1.0 - float(self.goal_distance)*2 - float(self.parkingline_ratio)*0.4 - float(self.local_step/self.max_step)*0.15
         if self.parkingline_ratio < 0.6:
             reward = 0.0
-        # self.get_logger().info(f'reward{reward},distance{self.goal_distance},ratio{self.parkingline_ratio}')
         return reward
 
     # 로봇 동작 수행
