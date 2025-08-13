@@ -280,7 +280,7 @@ class RLEnvironment(Node):
         self.local_step += 1
         self.get_logger().info(f'current step : {self.local_step}')
 
-        if self.goal_distance < 0.1:
+        if self.goal_distance < 0.05:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
