@@ -34,8 +34,8 @@ from std_srvs.srv import Empty
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
 
-from std_msgs.msg import Float64
-from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
+# from std_msgs.msg import Float64
+# from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
 
 
 from std_msgs.msg import Float64, Bool
@@ -69,10 +69,10 @@ class RLEnvironment(Node):
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
 
-        # 충돌센서 변수 추가
-        self.bumper_in_contact = False
-        self.bumper_force_norm = 0.0
-        self.bumper_max_depth = 0.0
+        # # 충돌센서 변수 추가
+        # self.bumper_in_contact = False
+        # self.bumper_force_norm = 0.0
+        # self.bumper_max_depth = 0.0
 
 
         self.local_step = 0
@@ -149,12 +149,12 @@ class RLEnvironment(Node):
         )
 
         # 충돌센서 토픽 추가
-        self.bumper_sub = self.create_subscription(
-            ContactsState,
-            '/bumper_states',
-            self.bumper_sub_callback,
-            qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
-        )
+        # self.bumper_sub = self.create_subscription(
+        #     ContactsState,
+        #     '/bumper_states',
+        #     self.bumper_sub_callback,
+        #     qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
+        # )
 
 
     def ratio_callback(self,msg):
@@ -243,35 +243,35 @@ class RLEnvironment(Node):
         self.goal_angle = goal_angle
         
     # 충돌 감지 콜백함수 추가
-    def bumper_sub_callback(self, msg: ContactsState):
-        # 기본: states가 비어있지 않으면 접촉 중
-        in_contact = len(msg.states) > 0
+    # def bumper_sub_callback(self, msg: ContactsState):
+    #     # 기본: states가 비어있지 않으면 접촉 중
+    #     in_contact = len(msg.states) > 0
 
-        force_norm = 0.0
-        max_depth = 0.0
+    #     force_norm = 0.0
+    #     max_depth = 0.0
 
-        for st in msg.states:
-            # total_wrench.force 크기(뉴턴)
-            fx = st.total_wrench.force.x
-            fy = st.total_wrench.force.y
-            fz = st.total_wrench.force.z
-            fn = (fx**2 + fy**2 + fz**2) ** 0.5
-            force_norm = max(force_norm, fn)
+    #     for st in msg.states:
+    #         # total_wrench.force 크기(뉴턴)
+    #         fx = st.total_wrench.force.x
+    #         fy = st.total_wrench.force.y
+    #         fz = st.total_wrench.force.z
+    #         fn = (fx**2 + fy**2 + fz**2) ** 0.5
+    #         force_norm = max(force_norm, fn)
 
-            # depths가 비어있지 않으면 최대 관입 깊이 추출
-            if st.depths:
-                max_depth = max(max_depth, max(st.depths))
+    #         # depths가 비어있지 않으면 최대 관입 깊이 추출
+    #         if st.depths:
+    #             max_depth = max(max_depth, max(st.depths))
 
-        # 간단 버전: states가 비어있지 않으면 True
-        # 보수적 버전(노이즈 필터링): force_norm > 0.5 N 또는 max_depth > 1e-5 m
-        CONTACT_FORCE_THRESHOLD = 0.5
-        CONTACT_DEPTH_THRESHOLD = 1e-5
+    #     # 간단 버전: states가 비어있지 않으면 True
+    #     # 보수적 버전(노이즈 필터링): force_norm > 0.5 N 또는 max_depth > 1e-5 m
+    #     CONTACT_FORCE_THRESHOLD = 0.5
+    #     CONTACT_DEPTH_THRESHOLD = 1e-5
 
-        self.bumper_in_contact = in_contact and (
-            (force_norm > CONTACT_FORCE_THRESHOLD) or (max_depth > CONTACT_DEPTH_THRESHOLD)
-        )
-        self.bumper_force_norm = force_norm
-        self.bumper_max_depth = max_depth
+    #     self.bumper_in_contact = in_contact and (
+    #         (force_norm > CONTACT_FORCE_THRESHOLD) or (max_depth > CONTACT_DEPTH_THRESHOLD)
+    #     )
+    #     self.bumper_force_norm = force_norm
+    #     self.bumper_max_depth = max_depth
 
     def calculate_state(self):
         state = []
@@ -292,8 +292,8 @@ class RLEnvironment(Node):
             self.local_step = 0
 
             self.call_task_succeed()
-        # self.min_obstacle_distanse 산출방식 수정 필요
-        if self.bumper_in_contact:  # Contact Sensor 충돌 조
+        # # self.min_obstacle_distanse 산출방식 수정 필요
+        # if self.bumper_in_contact:  # Contact Sensor 충돌 조
         if self.collision_flag == True:
             self.get_logger().info('Collision happened')
             self.fail = True
