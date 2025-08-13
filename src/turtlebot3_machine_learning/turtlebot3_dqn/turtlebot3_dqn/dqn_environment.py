@@ -54,7 +54,7 @@ class RLEnvironment(Node):
 
         # self.action_size = 5
         self.action_size = 11
-        self.max_step = 800
+        self.max_step = 300
 
         self.done = False
         self.fail = False
@@ -280,15 +280,17 @@ class RLEnvironment(Node):
         self.local_step += 1
         self.get_logger().info(f'current step : {self.local_step}')
 
+        msg = Twist() 
+        msg.linear.x = 0.
+        msg.angular.z = 0.
         if self.goal_distance < 0.05:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
-            msg = Twist() 
-            msg.linear.x = 0.
-            msg.angular.z = 0.
+            
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
+                time.sleep(1.)
             self.local_step = 0
 
             self.call_task_succeed()
@@ -297,13 +299,9 @@ class RLEnvironment(Node):
         if self.collision_flag == True:
             self.get_logger().info('Collision happened')
             self.fail = True
-            self.done = True
-            msg = Twist() 
-            msg.linear.x = 0.
-            msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
-
+                time.sleep(1.)
             self.local_step = 0
             self.call_task_failed()
 
@@ -312,23 +310,66 @@ class RLEnvironment(Node):
             self.get_logger().info('Time out!')
             self.fail = True
             self.done = True
-            msg = Twist() 
-            msg.linear.x = 0.
-            msg.angular.z = 0.
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
-            # else:
-            #     self.cmd_vel_pub.publish(TwistStamped())
+                time.sleep(1.)
             self.local_step = 0
             self.call_task_failed()
 
         return state
 
     def calculate_reward(self):
-        reward = 1.0 - float(self.goal_distance)*2 - float(self.parkingline_ratio)*0.4 - float(self.local_step/self.max_step)*0.15
-        if self.parkingline_ratio < 0.6:
-            reward = 0.0
-        return reward
+        # ----- 기본 스칼라 -----
+        # 진행도: 이전 거리 - 현재 거리 (가까워지면 양수, 멀어지면 음수)
+        progress = float(self.prev_goal_distance - self.goal_distance)
+
+        # 거리 스케일링(초기 거리 기준 정규화: 0~1 근처로)
+        d_norm = float(self.goal_distance / max(self.init_goal_distance, 1e-6))
+
+        # 노란선 비율(작을수록 좋음: 0이 최상, 1이 최악 가정)
+        y = float(self.parkingline_ratio)
+
+        # 시간 패널티(0~1)
+        t = float(self.local_step / max(self.max_step, 1))
+
+        # ----- 밀도 보상(스텝마다) -----
+        # 진행도 보상(거리 줄이면 +, 멀어지면 -)
+        r_progress = 1.0 * progress          # coef: 1.0
+
+        # 잔여 거리 패널티(멀면 -) : 초반엔 탐색하고 후반엔 수렴하도록 tanh로 완화 가능
+        r_distance = -0.3 * d_norm           # coef: 0.3
+
+        # 주차선 패널티(라인 비율이 크면 -)
+        r_line = -0.6 * (1-y)                    # coef: 0.6  (기존 0.4보다 약간 강화)
+
+        # 시간 패널티(질질 끌면 -)
+        r_time = -0.1 * t                    # coef: 0.1  (너무 세면 조기 돌진만 유도)
+
+        reward = r_progress + r_distance + r_line + r_time
+
+        # ----- 게이트/보너스/패널티 -----
+        # 일정 수준 이하에서만 보상 활성화(초기 혼란 억제)
+        # 주차선이 너무 나쁘면(>0.8) 보상 상한 캡
+        if y < 0.6:
+            reward = min(reward, 0.0)
+
+        # 터미널 보상
+        if self.succeed:
+            # 가까운 곳에서 깔끔히 멈출수록 보너스 조금 더
+            bonus = 3.0 + max(0.0, 1.0 - d_norm) * 2.0   # 3.0~5.0
+            reward += bonus
+
+        if self.fail:  # 충돌 또는 타임아웃
+            # 라인이 엉망인 상태에서의 실패는 더 큰 패널티
+            penalty = 3.0 + (d_norm  * 2.0)                    # 3.0~5.0
+            reward -= penalty
+
+        # ----- 진행도 기준 업데이트 -----
+        # 다음 스텝을 위해 이전 거리를 현재 거리로 갱신
+        self.prev_goal_distance = self.goal_distance
+
+        return float(reward)
+
 
     # 로봇 동작 수행
     def rl_agent_interface_callback(self, request, response):

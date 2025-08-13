@@ -98,7 +98,7 @@ class DQNAgent(Node):
         self.model = self.create_qnetwork()
         self.target_model = self.create_qnetwork()
         self.update_target_model()
-        self.update_target_after = 5000
+        self.update_target_after = 1000
         self.target_update_after_counter = 0
 
         self.load_model = False
@@ -160,8 +160,10 @@ class DQNAgent(Node):
         episode_num = self.load_episode
 
         for episode in range(self.load_episode + 1, self.max_training_episodes + 1):
-            state = self.reset_environment()
             self.parking_detect = False
+            time.sleep(0.5)
+            state = self.reset_environment()
+            
             episode_num += 1
             local_step = 0
             score = 0
@@ -255,7 +257,7 @@ class DQNAgent(Node):
         else:
             self.get_logger().error(
                 'Exception while calling service: {0}'.format(future.exception()))
-
+        
         return state
 
     def get_action(self, state):
