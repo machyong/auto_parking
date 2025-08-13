@@ -105,7 +105,7 @@ class DQNAgent(Node):
         self.load_episode = 0
         self.parking_detect = False
         self.model_dir_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+            '/home/yong/auto_parking/saved_model',
             'saved_model'
         )
         # self.model_path = os.path.join(
@@ -160,15 +160,18 @@ class DQNAgent(Node):
         episode_num = self.load_episode
 
         for episode in range(self.load_episode + 1, self.max_training_episodes + 1):
-            self.parking_detect = False
-            time.sleep(0.5)
+
+            # 환경 초기화 1차
+            _ = self.reset_environment()
+            time.sleep(0.5)  # 안정화 대기
+            # 환경 초기화 2차
             state = self.reset_environment()
             
             episode_num += 1
+            self.get_logger().info(f'Episode : {episode_num}')
             local_step = 0
             score = 0
             sum_max_q = 0.0
-            self.get_logger().info(f'Episode : {episode_num}')
             time.sleep(1.5)
 
             while True:
@@ -192,6 +195,10 @@ class DQNAgent(Node):
                 state = next_state
 
                 if done:
+                    while self.parking_detect == True:
+                        self.parking_detect = False
+                        print(f'parking_detect 초기화 : {self.parking_detect}')
+                        time.sleep(0.1)
                     avg_max_q = sum_max_q / local_step if local_step > 0 else 0.0
 
                     msg = Float32MultiArray()
@@ -223,12 +230,12 @@ class DQNAgent(Node):
                 if episode % 100 == 0:
                     self.model_path = os.path.join(
                         self.model_dir_path,
-                        '_episode' + str(episode) + '.h5')
+                        'episode' + str(episode) + '.h5')
                     self.model.save(self.model_path)
                     with open(
                         os.path.join(
                             self.model_dir_path,
-                            '_episode' + str(episode) + '.json'
+                            'episode' + str(episode) + '.json'
                         ),
                         'w'
                     ) as outfile:
