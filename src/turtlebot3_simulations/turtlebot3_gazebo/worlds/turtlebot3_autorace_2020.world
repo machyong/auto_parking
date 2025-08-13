@@ -7,7 +7,7 @@
       <background>0.7 0.7 0.7 1</background>
     </scene>
     <model name='course'>
-      <static>1</static>
+      <static>true</static>
       <link name='course_link'>
         <collision name='course_collision'>
           <geometry>
@@ -56,7 +56,7 @@
       <pose>0 0 0 0 0 -3.14</pose>
     </model>
     <model name='traffic_stop'>
-      <static>1</static>
+      <static>true</static>
       <link name='box'>
         <pose>0 0 0 0 -0 0</pose>
         <collision name='collision'>
@@ -119,7 +119,7 @@
     </light>
     <model name='ground2'>
       <pose>0 0 -0.1 0 -0 0</pose>
-      <static>1</static>
+      <static>true</static>
       <link name='ground'>
         <collision name='ground_coll'>
           <geometry>
@@ -229,104 +229,6 @@
         <falloff>0</falloff>
       </spot>
     </light>
-    <state world_name='default'>
-      <sim_time>909 729000000</sim_time>
-      <real_time>147 263953821</real_time>
-      <wall_time>1754035777 392708626</wall_time>
-      <iterations>145654</iterations>
-      <model name='barrier_3_clone'>
-        <pose>0.254438 0.932135 0.105092 -3e-06 -3e-06 3.2e-05</pose>
-        <scale>0.783811 1.82544 0.700616</scale>
-        <link name='link'>
-          <pose>0.254438 0.932135 0.105092 -3e-06 -3e-06 3.2e-05</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.45284 0.421826 -1.98455 -0.87225 1.16736 -3.14159</acceleration>
-          <wrench>-0.45284 0.421826 -1.98455 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='barrier_3_clone_clone'>
-        <pose>0.244482 1.46033 0.105093 3e-06 1e-06 3.2e-05</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.244482 1.46033 0.105093 3e-06 1e-06 3.2e-05</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.682175 0.635403 1.97304 0.236816 -0.207728 -2.9e-05</acceleration>
-          <wrench>-0.682175 0.635403 1.97304 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='barrier_3_clone_clone_0'>
-        <pose>0.744903 0.931438 0.105092 -1e-06 -5e-06 3.9e-05</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.744903 0.931438 0.105092 -1e-06 -5e-06 3.9e-05</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.453254 0.422203 -1.9775 -0.875829 1.17129 -3.14159</acceleration>
-          <wrench>-0.453254 0.422203 -1.9775 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='barrier_3_clone_clone_1'>
-        <pose>0.746829 1.19557 0.105093 -2e-06 -2e-06 3e-05</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.746829 1.19557 0.105093 -2e-06 -2e-06 3e-05</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.682407 -0.635672 1.9775 -0.234523 0.210183 0</acceleration>
-          <wrench>0.682407 -0.635672 1.9775 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='barrier_3_clone_clone_2'>
-        <pose>0.748581 1.46722 0.105093 -1e-06 -3e-06 3.8e-05</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.748581 1.46722 0.105093 -1e-06 -3e-06 3.8e-05</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.682411 -0.635667 1.9775 -0.234566 0.210223 0</acceleration>
-          <wrench>0.682411 -0.635667 1.9775 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='course'>
-        <pose>0 0 0 0 0 -3.14</pose>
-        <scale>1 1 1</scale>
-        <link name='course_link'>
-          <pose>0 0 0 0 0 -3.14</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='ground2'>
-        <pose>0 0 -0.1 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='ground'>
-          <pose>0 0 -0.1 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='traffic_stop'>
-        <pose>0.978301 -2.79326 0.125 0 0 -1.57</pose>
-        <scale>1 1 1</scale>
-        <link name='box'>
-          <pose>0.978301 -2.79326 0.125 0 0 -1.57</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <light name='sun'>
-        <pose>0 0 10 0 -0 0</pose>
-      </light>
-      <light name='user_point_light_1'>
-        <pose>-1.64815 0.604519 1 0 -0 0</pose>
-      </light>
-      <light name='user_point_light_2'>
-        <pose>1.63854 1.69565 1 0 -0 0</pose>
-      </light>
-      <light name='user_point_light_3'>
-        <pose>0.42 -3.31 1 0 -0 0</pose>
-      </light>
-    </state>
     <gui fullscreen='0'>
       <camera name='user_camera'>
         <pose>1.72487 6.03336 3.99348 0 0.637795 -1.597</pose>
@@ -339,7 +241,6 @@
     </audio>
     <wind/>
     <model name='barrier_3_clone'>
-      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -361,7 +262,7 @@
         <visual name='visual'>
           <geometry>
             <box>
-              <size>0.25 0.1 0.3</size>
+              <size>0.195953 0.182544 0.210185</size>
             </box>
           </geometry>
           <material>
@@ -372,8 +273,8 @@
             <shader type='pixel'>
               <normal_map>__default__</normal_map>
             </shader>
-            <ambient>0.3 0.3 0.3 1</ambient>
-            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
             <specular>0.01 0.01 0.01 1</specular>
             <emissive>0 0 0 1</emissive>
           </material>
@@ -387,7 +288,7 @@
           <pose>0 0 0 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.25 0.1 0.3</size>
+              <size>0.195953 0.182544 0.210185</size>
             </box>
           </geometry>
           <surface>
@@ -437,12 +338,11 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>0.207519 0.92785 0.149991 1e-06 -2e-06 2.6e-05</pose>
+      <pose>0.2505 0.9321 0.1033 0 0 0</pose>
     </model>
     <model name='barrier_3_clone_clone'>
-      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -475,8 +375,8 @@
             <shader type='pixel'>
               <normal_map>__default__</normal_map>
             </shader>
-            <ambient>0.3 0.3 0.3 1</ambient>
-            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
             <specular>0.01 0.01 0.01 1</specular>
             <emissive>0 0 0 1</emissive>
           </material>
@@ -540,12 +440,11 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
       <pose>0.244482 1.46033 0.105092 -4e-06 2e-06 3.4e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_0'>
-      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -578,8 +477,8 @@
             <shader type='pixel'>
               <normal_map>__default__</normal_map>
             </shader>
-            <ambient>0.3 0.3 0.3 1</ambient>
-            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
             <specular>0.01 0.01 0.01 1</specular>
             <emissive>0 0 0 1</emissive>
           </material>
@@ -643,12 +542,11 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
       <pose>0.744904 0.931438 0.105092 -4e-06 2e-06 3.4e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_1'>
-      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -681,8 +579,8 @@
             <shader type='pixel'>
               <normal_map>__default__</normal_map>
             </shader>
-            <ambient>0.3 0.3 0.3 1</ambient>
-            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
             <specular>0.01 0.01 0.01 1</specular>
             <emissive>0 0 0 1</emissive>
           </material>
@@ -746,12 +644,11 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
       <pose>0.746829 1.19557 0.105092 4e-06 2e-06 3.3e-05</pose>
     </model>
     <model name='barrier_3_clone_clone_2'>
-      <static>1</static>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -784,8 +681,8 @@
             <shader type='pixel'>
               <normal_map>__default__</normal_map>
             </shader>
-            <ambient>0.3 0.3 0.3 1</ambient>
-            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
             <specular>0.01 0.01 0.01 1</specular>
             <emissive>0 0 0 1</emissive>
           </material>
@@ -849,7 +746,7 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
       <pose>0.748582 1.46722 0.105093 2e-06 3e-06 3.3e-05</pose>
     </model>
