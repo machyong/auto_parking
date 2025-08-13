@@ -71,6 +71,9 @@ class GazeboInterface(Node):
         self.reset_simulation_client.call_async(reset_req)
 
     def task_succeed_callback(self, request, response):
+        if ROS_DISTRO == 'humble':
+            self.reset_simulation()
+        time.sleep(0.2)
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
