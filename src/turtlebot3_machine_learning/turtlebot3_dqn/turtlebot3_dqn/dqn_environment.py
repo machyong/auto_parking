@@ -167,7 +167,6 @@ class RLEnvironment(Node):
 
     # dqn_agent에서 학습 끝나고 다음 에피소드를 시작할 때 호출
     def reset_environment_callback(self, request, response):
-        self.cmd_vel_pub.publish(Twist())
         state = self.calculate_state()
         self.init_goal_distance = state[0]
         self.prev_goal_distance = self.init_goal_distance #이것만 사용
@@ -248,6 +247,7 @@ class RLEnvironment(Node):
             self.done = True
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(Twist())
+                time.sleep(1.0)
             self.local_step = 0
             self.linear_x = 0.
             self.call_task_failed()
