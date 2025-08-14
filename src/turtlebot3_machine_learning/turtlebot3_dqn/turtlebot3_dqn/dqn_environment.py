@@ -33,7 +33,7 @@ from std_srvs.srv import Empty
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
-
+from tqdm import tqdm
 # from std_msgs.msg import Float64
 # from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
 
@@ -68,7 +68,7 @@ class RLEnvironment(Node):
         self.front_ranges = []
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
-
+        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
         # # 충돌센서 변수 추가
         # self.bumper_in_contact = False
         # self.bumper_force_norm = 0.0
@@ -185,6 +185,9 @@ class RLEnvironment(Node):
 
     # dqn_agent에서 학습 끝나고 다음 에피소드를 시작할 때 호출
     def reset_environment_callback(self, request, response):
+        # 초기 흔들림 방지용 정지 명령
+        self.settle_robot(duration=0.5, hz=20)
+
         state = self.calculate_state()
         self.init_goal_distance = state[0]
         self.prev_goal_distance = self.init_goal_distance #이것만 사용
@@ -278,7 +281,10 @@ class RLEnvironment(Node):
         state.append(float(self.goal_distance))
         state.append(float(self.parkingline_ratio))
         self.local_step += 1
-        self.get_logger().info(f'current step : {self.local_step}')
+        # self.get_logger().info(f'current step : {self.local_step}')
+
+        self.pbar.n = self.local_step
+        self.pbar.refresh()
 
         msg = Twist() 
         msg.linear.x = 0.
@@ -299,6 +305,7 @@ class RLEnvironment(Node):
         if self.collision_flag == True:
             self.get_logger().info('Collision happened')
             self.fail = True
+            self.done = True
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
@@ -425,6 +432,21 @@ class RLEnvironment(Node):
         yaw = numpy.arctan2(siny_cosp, cosy_cosp)
 
         return roll, pitch, yaw
+    # 로봇 안정화용
+    def settle_robot(self, duration=0.4, hz=20):
+        # duration 동안 0속도 명령을 지속해서 퍼블리시
+        dt = 1.0/float(hz)
+        if ROS_DISTRO == 'humble':
+            msg = Twist()
+        else:
+            msg = TwistStamped()
+        end = time.time() + duration
+        while time.time() < end:
+            if ROS_DISTRO == 'humble':
+                self.cmd_vel_pub.publish(Twist())
+            else:
+                self.cmd_vel_pub.publish(TwistStamped())
+            time.sleep(dt)
 
 
 def main(args=None):
