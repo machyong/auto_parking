@@ -105,7 +105,7 @@ class DQNAgent(Node):
         self.load_episode = 0
         self.parking_detect = False
         self.model_dir_path = os.path.join(
-            '/home/yong/auto_parking/saved_model',
+            '/home/yong/auto_parking',
             'saved_model'
         )
         # self.model_path = os.path.join(
@@ -204,6 +204,13 @@ class DQNAgent(Node):
                     msg = Float32MultiArray()
                     msg.data = [float(score), float(avg_max_q)]
                     self.result_pub.publish(msg)
+
+                    # ===== 에피소드 결과 저장 추가 =====
+                    result_file = os.path.join(self.model_dir_path, "episode_results.csv")
+                    success_or_fail = "SUCCESS" if self.succeed else "FAIL"
+                    with open(result_file, "a") as f:
+                        f.write(f"{episode_num},{success_or_fail},{score}\n")
+                    # ===============================
 
                     if LOGGING:
                         self.dqn_reward_metric.update_state(score)

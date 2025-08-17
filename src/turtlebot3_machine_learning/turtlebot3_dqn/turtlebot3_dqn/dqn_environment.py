@@ -54,7 +54,7 @@ class RLEnvironment(Node):
 
         # self.action_size = 5
         self.action_size = 11
-        self.max_step = 300
+        self.max_step = 400
 
         self.done = False
         self.fail = False
@@ -69,6 +69,8 @@ class RLEnvironment(Node):
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
         self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
+
+        self.outcome = True
         # # 충돌센서 변수 추가
         # self.bumper_in_contact = False
         # self.bumper_force_norm = 0.0
@@ -155,6 +157,16 @@ class RLEnvironment(Node):
         #     self.bumper_sub_callback,
         #     qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
         # )
+
+        # ===== Reward coefficients (easy to tune) =====
+        self.R_SUCCESS = 0.5            # 성공점수(고정)
+        self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
+        self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
+        self.COLLISION_PENALTY = 1.2    # 충돌 패널티 (가장 크게)
+        self.STEP_OVER_PENALTY = 0.6    # 이동횟수 초과 패널티 (중간)
+        self.MOVE_PENALTY_MAX = 0.3     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
+        self.PROGRESS_SHAPING = 0.10    # 비-터미널 스텝에서만 주는 미세한 진행 보상
+
 
 
     def ratio_callback(self,msg):
@@ -326,53 +338,51 @@ class RLEnvironment(Node):
         return state
 
     def calculate_reward(self):
-        # ----- 기본 스칼라 -----
-        # 진행도: 이전 거리 - 현재 거리 (가까워지면 양수, 멀어지면 음수)
+        """
+        네가 준 논리를 그대로 반영:
+        성공: (성공점수 0.5 - ROI기반 성공패널티) + (거리점수 - 이동패널티)
+        실패(충돌): 거리점수 - 이동패널티 - 충돌패널티
+        실패(이동횟수 초과): 거리점수 - 이동패널티 - 초과패널티
+        진행중(비-터미널): 얇은 shaping만 (진행도 - 이동소패널티)
+        """
+
+        # ----- 공통 스칼라 -----
+        # 거리점수: 초기거리 대비 가까워질수록 0~0.5까지 선형상승
+        init_d = max(self.init_goal_distance, 1e-6)
+        d_ratio = min(1.0, float(self.goal_distance / init_d))
+        distance_score = self.DIST_MAX * (1.0 - d_ratio)  # 0.0 ~ 0.5
+
+        # 이동(스텝) 패널티: 길게 끌수록 더 많이 깎임 (최대 MOVE_PENALTY_MAX)
+        move_penalty = self.MOVE_PENALTY_MAX * (float(self.local_step) / max(self.max_step, 1))
+
+        # 후방 ROI 기반 성공 패널티: ROI가 클수록(후방 주차일수록) 감점 ↓
+        roi = float(self.parkingline_ratio)
+        roi = 0.0 if roi < 0.0 else (1.0 if roi > 1.0 else roi)  # clamp 0~1
+        success_penalty = self.SUCCESS_PENALTY_MAX * (1.0 - roi)  # ROI↑ -> penalty↓
+
+        # 진행 shaping: 비-터미널에서만 아주 얇게 제공 (방향설정에 도움)
         progress = float(self.prev_goal_distance - self.goal_distance)
+        shaping = self.PROGRESS_SHAPING * progress
 
-        # 거리 스케일링(초기 거리 기준 정규화: 0~1 근처로)
-        d_norm = float(self.goal_distance / max(self.init_goal_distance, 1e-6))
-
-        # 노란선 비율(작을수록 좋음: 0이 최상, 1이 최악 가정)
-        y = float(self.parkingline_ratio)
-
-        # 시간 패널티(0~1)
-        t = float(self.local_step / max(self.max_step, 1))
-
-        # ----- 밀도 보상(스텝마다) -----
-        # 진행도 보상(거리 줄이면 +, 멀어지면 -)
-        r_progress = 1.0 * progress          # coef: 1.0
-
-        # 잔여 거리 패널티(멀면 -) : 초반엔 탐색하고 후반엔 수렴하도록 tanh로 완화 가능
-        r_distance = -0.3 * d_norm           # coef: 0.3
-
-        # 주차선 패널티(라인 비율이 크면 -)
-        r_line = -0.6 * (1-y)                    # coef: 0.6  (기존 0.4보다 약간 강화)
-
-        # 시간 패널티(질질 끌면 -)
-        r_time = -0.1 * t                    # coef: 0.1  (너무 세면 조기 돌진만 유도)
-
-        reward = r_progress + r_distance + r_line + r_time
-
-        # ----- 게이트/보너스/패널티 -----
-        # 일정 수준 이하에서만 보상 활성화(초기 혼란 억제)
-        # 주차선이 너무 나쁘면(>0.8) 보상 상한 캡
-        if y < 0.6:
-            reward = min(reward, 0.0)
-
-        # 터미널 보상
+        # ----- 터미널 보상 -----
         if self.succeed:
-            # 가까운 곳에서 깔끔히 멈출수록 보너스 조금 더
-            bonus = 3.0 + max(0.0, 1.0 - d_norm) * 2.0   # 3.0~5.0
-            reward += bonus
+            # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
+            reward = (self.R_SUCCESS - success_penalty) + (distance_score - move_penalty)
 
-        if self.fail:  # 충돌 또는 타임아웃
-            # 라인이 엉망인 상태에서의 실패는 더 큰 패널티
-            penalty = 3.0 + (d_norm  * 2.0)                    # 3.0~5.0
-            reward -= penalty
+        elif self.fail:
+            # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
+            # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
+            # 충돌 플래그가 True면 충돌 실패로 간주
+            if getattr(self, 'collision_flag', False) is True:
+                reward = distance_score - move_penalty - self.COLLISION_PENALTY
+            else:
+                reward = distance_score - move_penalty - self.STEP_OVER_PENALTY
 
-        # ----- 진행도 기준 업데이트 -----
-        # 다음 스텝을 위해 이전 거리를 현재 거리로 갱신
+        else:
+            # 비-터미널: 얇은 shaping - 이동 소패널티
+            reward = shaping - (move_penalty * 0.2)
+
+        # 다음 스텝 대비 업데이트
         self.prev_goal_distance = self.goal_distance
 
         return float(reward)
