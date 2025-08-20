@@ -416,14 +416,6 @@ class RLEnvironment(Node):
     def rl_agent_interface_callback(self, request, response):
         action = int(request.action)
         self.last_action = action
-
-        # timer 가변을 위한 변수
-        yaw_error = abs(self._wrap(self.goal_yaw - getattr(self, 'robot_pose_theta', 0.0)))
-        base = 0.30
-        ang_scale = max(0.5, 1.0 - min(abs(ang)/0.6, 1.0) * 0.5)  # ang=0.6일 때 0.5배
-        yaw_scale = max(0.3, min(yaw_error / 0.35, 1.0))         # 0.35rad(≈20°) 기준
-        tau = max(0.08, min(base * ang_scale * yaw_scale, 0.30))
-
         if ROS_DISTRO == 'humble':
             msg = Twist() 
             msg.linear.x = self.angular_vel[action][0]
@@ -432,10 +424,10 @@ class RLEnvironment(Node):
 
         if self.stop_cmd_vel_timer is None:
             self.prev_goal_distance = self.init_goal_distance
-            self.stop_cmd_vel_timer = self.create_timer(tau, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
         else:
             self.destroy_timer(self.stop_cmd_vel_timer)
-            self.stop_cmd_vel_timer = self.create_timer(tau, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
 
         response.state = self.calculate_state()
         response.reward = self.calculate_reward()
@@ -447,6 +439,7 @@ class RLEnvironment(Node):
             self.fail = False
 
         return response
+
 
     def timer_callback(self):
         self.get_logger().info('Stop called')

@@ -25,7 +25,7 @@ import os
 import random
 import sys
 import time
-from datetime import datetime
+
 
 import numpy
 import rclpy
@@ -207,8 +207,7 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
-                    today = datetime.now().strftime("%m%d")
-                    result_file = os.path.join(self.model_dir_path, "episode_results" + str(today) + ".csv")
+                    result_file = os.path.join(self.model_dir_path, "episode_results0820.csv")
                     success_or_fail = "SUCCESS" if self.succeed else "FAIL"
                     with open(result_file, "a") as f:
                         f.write(f"{episode_num},{success_or_fail},{score}\n")
