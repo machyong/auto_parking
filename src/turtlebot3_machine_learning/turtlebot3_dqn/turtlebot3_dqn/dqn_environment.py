@@ -30,6 +30,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from std_srvs.srv import Empty
+import math
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
@@ -63,7 +64,7 @@ class RLEnvironment(Node):
         self.collisoin_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
-        self.init_goal_distance = 0.5
+        self.init_goal_distance = 0.7
         self.scan_ranges = []
         self.front_ranges = []
         self.min_obstacle_distance = 10.0
@@ -80,9 +81,14 @@ class RLEnvironment(Node):
         self.local_step = 0
         self.stop_cmd_vel_timer = None
         # self.angular_vel = [1.5, 0.75, 0.0, -0.75, -1.5]
-        self.angular_vel = [[0.1, 1.5], [0.1, 0.75], [0.1, 0.0], [0.1, -0.75], [0.1, -1.5],
-                            [0.0, 0.0],
-                            [-0.1, 1.5], [-0.1, 0.75], [-0.1, 0.0], [-0.1, -0.75], [-0.1, -1.5]]
+        # self.angular_vel = [[0.1, 1.5], [0.1, 0.75], [0.1, 0.0], [0.1, -0.75], [0.1, -1.5],
+        #                     [0.0, 0.0],
+        #                     [-0.1, 1.5], [-0.1, 0.75], [-0.1, 0.0], [-0.1, -0.75], [-0.1, -1.5]]
+        self.angular_vel = [
+            [ 0.1,  0.6], [ 0.1,  0.3], [ 0.1,  0.0], [ 0.1, -0.3], [ 0.1, -0.6],
+            [ 0.0,  0.0],
+            [-0.1,  0.6], [-0.1,  0.3], [-0.1,  0.0], [-0.1, -0.3], [-0.1, -0.6],
+        ]
         qos = QoSProfile(depth=10)
 
         if ROS_DISTRO == 'humble':
@@ -162,12 +168,16 @@ class RLEnvironment(Node):
         self.R_SUCCESS = 0.5            # 성공점수(고정)
         self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
         self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
-        self.COLLISION_PENALTY = 1.2    # 충돌 패널티 (가장 크게)
+        self.COLLISION_PENALTY = 2.    # 충돌 패널티 (가장 크게)
         self.STEP_OVER_PENALTY = 0.6    # 이동횟수 초과 패널티 (중간)
-        self.MOVE_PENALTY_MAX = 0.3     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
+        self.MOVE_PENALTY_MAX = 0.5     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
         self.PROGRESS_SHAPING = 0.10    # 비-터미널 스텝에서만 주는 미세한 진행 보상
 
-
+        # 
+        self.goal_yaw = 0.0           # 최종 정렬하고 싶은 방향 (예: 0 rad)
+        self.last_action = None       # 직전 행동 기억(보상에서 전/후진 판단용)
+        self.yaw_abs = math.pi           # 현재 |yaw|
+        self.prev_yaw_abs = math.pi      # 이전 |yaw| (shaping용)
 
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
@@ -234,6 +244,14 @@ class RLEnvironment(Node):
         else:
             self.get_logger().error('task failed service call failed')
 
+    # 차량 각도 차이 계산용 함수
+    def _wrap(self, a):
+        while a > math.pi:
+            a -= 2.0 * math.pi
+        while a < -math.pi:
+            a += 2.0 * math.pi
+        return a
+    
     # odom 계산
     def odom_sub_callback(self, msg):
         self.robot_pose_x = msg.pose.pose.position.x
@@ -256,6 +274,7 @@ class RLEnvironment(Node):
 
         self.goal_distance = goal_distance
         self.goal_angle = goal_angle
+        self.yaw_abs = abs(self.robot_pose_theta)
         
     # 충돌 감지 콜백함수 추가
     # def bumper_sub_callback(self, msg: ContactsState):
@@ -290,8 +309,9 @@ class RLEnvironment(Node):
 
     def calculate_state(self):
         state = []
+        yaw_error = self._wrap(self.goal_yaw - self.robot_pose_theta)
         state.append(float(self.goal_distance))
-        state.append(float(self.parkingline_ratio))
+        state.append(float(yaw_error))
         self.local_step += 1
         # self.get_logger().info(f'current step : {self.local_step}')
 
@@ -301,7 +321,7 @@ class RLEnvironment(Node):
         msg = Twist() 
         msg.linear.x = 0.
         msg.angular.z = 0.
-        if self.goal_distance < 0.05:
+        if self.goal_distance < 0.03:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
@@ -338,14 +358,6 @@ class RLEnvironment(Node):
         return state
 
     def calculate_reward(self):
-        """
-        네가 준 논리를 그대로 반영:
-        성공: (성공점수 0.5 - ROI기반 성공패널티) + (거리점수 - 이동패널티)
-        실패(충돌): 거리점수 - 이동패널티 - 충돌패널티
-        실패(이동횟수 초과): 거리점수 - 이동패널티 - 초과패널티
-        진행중(비-터미널): 얇은 shaping만 (진행도 - 이동소패널티)
-        """
-
         # ----- 공통 스칼라 -----
         # 거리점수: 초기거리 대비 가까워질수록 0~0.5까지 선형상승
         init_d = max(self.init_goal_distance, 1e-6)
@@ -357,40 +369,61 @@ class RLEnvironment(Node):
 
         # 후방 ROI 기반 성공 패널티: ROI가 클수록(후방 주차일수록) 감점 ↓
         roi = float(self.parkingline_ratio)
-        roi = 0.0 if roi < 0.0 else (1.0 if roi > 1.0 else roi)  # clamp 0~1
-        success_penalty = self.SUCCESS_PENALTY_MAX * (1.0 - roi)  # ROI↑ -> penalty↓
+        if roi <= 0.6:
+            roi = roi/2
+        else:
+            roi = roi
+        roi_scaled = roi * 10.0           # 0~10로 스케일
+
+        # 패널티는 0~SUCCESS_PENALTY_MAX 범위에 머물도록 정규화
+        roi_bonus = self.SUCCESS_PENALTY_MAX * (1.0 - roi_scaled / 10.0)
 
         # 진행 shaping: 비-터미널에서만 아주 얇게 제공 (방향설정에 도움)
         progress = float(self.prev_goal_distance - self.goal_distance)
         shaping = self.PROGRESS_SHAPING * progress
-
+        # 각도 계산 공식 GPT 추천
+        yaw_improve = float(self.prev_yaw_abs - self.yaw_abs)
+        r_yaw_shaping = 0.3 * yaw_improve    # C1=0.3
+        yaw_norm = float(self.yaw_abs / math.pi)  # 0(정렬) ~ 1(정반대)
+        r_yaw_penalty = -0.4 * yaw_norm
         # ----- 터미널 보상 -----
         if self.succeed:
             # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
-            reward = (self.R_SUCCESS - success_penalty) + (distance_score - move_penalty)
+            reward = (self.R_SUCCESS + roi_bonus) + r_yaw_shaping +r_yaw_penalty
 
         elif self.fail:
             # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
             # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
             # 충돌 플래그가 True면 충돌 실패로 간주
+            r_yaw_shaping = 0.0
+            r_yaw_penalty = - 0.25 * yaw_norm
             if getattr(self, 'collision_flag', False) is True:
-                reward = distance_score - move_penalty - self.COLLISION_PENALTY
+                reward = distance_score - self.COLLISION_PENALTY
             else:
-                reward = distance_score - move_penalty - self.STEP_OVER_PENALTY
+                reward = distance_score - self.STEP_OVER_PENALTY + r_yaw_penalty
 
         else:
             # 비-터미널: 얇은 shaping - 이동 소패널티
-            reward = shaping - (move_penalty * 0.2)
-
+            reward = shaping - (move_penalty * 0.2) + r_yaw_shaping + r_yaw_penalty
         # 다음 스텝 대비 업데이트
         self.prev_goal_distance = self.goal_distance
+        self.prev_yaw_abs = self.yaw_abs
 
         return float(reward)
 
 
     # 로봇 동작 수행
     def rl_agent_interface_callback(self, request, response):
-        action = request.action
+        action = int(request.action)
+        self.last_action = action
+
+        # timer 가변을 위한 변수
+        yaw_error = abs(self._wrap(self.goal_yaw - getattr(self, 'robot_pose_theta', 0.0)))
+        base = 0.30
+        ang_scale = max(0.5, 1.0 - min(abs(ang)/0.6, 1.0) * 0.5)  # ang=0.6일 때 0.5배
+        yaw_scale = max(0.3, min(yaw_error / 0.35, 1.0))         # 0.35rad(≈20°) 기준
+        tau = max(0.08, min(base * ang_scale * yaw_scale, 0.30))
+
         if ROS_DISTRO == 'humble':
             msg = Twist() 
             msg.linear.x = self.angular_vel[action][0]
@@ -399,10 +432,10 @@ class RLEnvironment(Node):
 
         if self.stop_cmd_vel_timer is None:
             self.prev_goal_distance = self.init_goal_distance
-            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(tau, self.timer_callback)
         else:
             self.destroy_timer(self.stop_cmd_vel_timer)
-            self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
+            self.stop_cmd_vel_timer = self.create_timer(tau, self.timer_callback)
 
         response.state = self.calculate_state()
         response.reward = self.calculate_reward()
