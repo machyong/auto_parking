@@ -100,7 +100,10 @@ class RLEnvironment(Node):
             self.odom_sub_callback,
             qos
         )
-        
+        self.model_dir_path = os.path.join(
+            '/home/yong/auto_parking',
+            'saved_model'
+        )
         ######################## 카메라 3종으로 교체  service client로
         # self.scan_sub = self.create_subscription(
         #     LaserScan,
@@ -390,6 +393,9 @@ class RLEnvironment(Node):
         if self.succeed:
             # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
             reward = (self.R_SUCCESS + roi_bonus)
+            result_file = os.path.join(self.model_dir_path, "episode_reward0821.csv")
+            with open(result_file, "a") as f:
+                f.write(f"{self.local_step},succeed,{reward}\n")
 
         elif self.fail:
             # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
@@ -399,9 +405,15 @@ class RLEnvironment(Node):
                 reward = self.COLLISION_PENALTY
             else:
                 reward = self.STEP_OVER_PENALTY
+            result_file = os.path.join(self.model_dir_path, "episode_reward0821.csv")
+            with open(result_file, "a") as f:
+                f.write(f"{self.local_step},fail,{reward}\n")
         else:
             # 비-터미널: 얇은 shaping - 이동 소패널티
             reward = shaping - (move_penalty * 0.2) + r_yaw_shaping + r_yaw_penalty
+            result_file = os.path.join(self.model_dir_path, "episode_reward0821.csv")
+            with open(result_file, "a") as f:
+                f.write(f"{self.local_step},driving,{reward}\n")
         # 다음 스텝 대비 업데이트
         self.prev_goal_distance = self.goal_distance
         self.prev_yaw_abs = self.yaw_abs

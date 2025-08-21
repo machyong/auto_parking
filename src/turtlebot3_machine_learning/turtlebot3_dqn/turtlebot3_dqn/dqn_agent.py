@@ -109,6 +109,7 @@ class DQNAgent(Node):
             '/home/yong/auto_parking',
             'saved_model'
         )
+        self.drive_result = False
         # self.model_path = os.path.join(
         #     self.model_dir_path,
         #     'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
@@ -207,10 +208,9 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
-                    result_file = os.path.join(self.model_dir_path, "episode_results0820.csv")
-                    success_or_fail = "SUCCESS" if self.succeed else "FAIL"
+                    result_file = os.path.join(self.model_dir_path, "episode_score0821.csv")
                     with open(result_file, "a") as f:
-                        f.write(f"{episode_num},{success_or_fail},{score}\n")
+                        f.write(f"{episode_num},{local_step},{score}\n")
                     # ===============================
 
                     if LOGGING:
