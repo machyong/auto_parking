@@ -169,7 +169,7 @@ class RLEnvironment(Node):
         self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
         self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
         self.COLLISION_PENALTY = -30.    # 충돌 패널티 (가장 크게)
-        self.STEP_OVER_PENALTY = -30    # 이동횟수 초과 패널티 (중간)
+        self.STEP_OVER_PENALTY = -30.    # 이동횟수 초과 패널티 (중간)
         self.MOVE_PENALTY_MAX = 0.5     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
         self.PROGRESS_SHAPING = 0.2    # 비-터미널 스텝에서만 주는 미세한 진행 보상
 
