@@ -165,13 +165,13 @@ class RLEnvironment(Node):
         # )
 
         # ===== Reward coefficients (easy to tune) =====
-        self.R_SUCCESS = 0.5            # 성공점수(고정)
+        self.R_SUCCESS = 10.0            # 성공점수(고정)
         self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
         self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
-        self.COLLISION_PENALTY = 2.    # 충돌 패널티 (가장 크게)
-        self.STEP_OVER_PENALTY = 0.6    # 이동횟수 초과 패널티 (중간)
+        self.COLLISION_PENALTY = -30.    # 충돌 패널티 (가장 크게)
+        self.STEP_OVER_PENALTY = -30    # 이동횟수 초과 패널티 (중간)
         self.MOVE_PENALTY_MAX = 0.5     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
-        self.PROGRESS_SHAPING = 0.10    # 비-터미널 스텝에서만 주는 미세한 진행 보상
+        self.PROGRESS_SHAPING = 0.2    # 비-터미널 스텝에서만 주는 미세한 진행 보상
 
         # 
         self.goal_yaw = 0.0           # 최종 정렬하고 싶은 방향 (예: 0 rad)
@@ -321,7 +321,7 @@ class RLEnvironment(Node):
         msg = Twist() 
         msg.linear.x = 0.
         msg.angular.z = 0.
-        if self.goal_distance < 0.03:
+        if self.goal_distance < 0.04:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
@@ -376,7 +376,7 @@ class RLEnvironment(Node):
         roi_scaled = roi * 10.0           # 0~10로 스케일
 
         # 패널티는 0~SUCCESS_PENALTY_MAX 범위에 머물도록 정규화
-        roi_bonus = self.SUCCESS_PENALTY_MAX * (1.0 - roi_scaled / 10.0)
+        roi_bonus = self.SUCCESS_PENALTY_MAX * (roi_scaled)
 
         # 진행 shaping: 비-터미널에서만 아주 얇게 제공 (방향설정에 도움)
         progress = float(self.prev_goal_distance - self.goal_distance)
@@ -389,19 +389,16 @@ class RLEnvironment(Node):
         # ----- 터미널 보상 -----
         if self.succeed:
             # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
-            reward = (self.R_SUCCESS + roi_bonus) + r_yaw_shaping +r_yaw_penalty
+            reward = (self.R_SUCCESS + roi_bonus)
 
         elif self.fail:
             # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
             # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
             # 충돌 플래그가 True면 충돌 실패로 간주
-            r_yaw_shaping = 0.0
-            r_yaw_penalty = - 0.25 * yaw_norm
             if getattr(self, 'collision_flag', False) is True:
-                reward = distance_score - self.COLLISION_PENALTY
+                reward = self.COLLISION_PENALTY
             else:
-                reward = distance_score - self.STEP_OVER_PENALTY + r_yaw_penalty
-
+                reward = self.STEP_OVER_PENALTY
         else:
             # 비-터미널: 얇은 shaping - 이동 소패널티
             reward = shaping - (move_penalty * 0.2) + r_yaw_shaping + r_yaw_penalty
