@@ -36,7 +36,7 @@ class GazeboInterface(Node):
     def __init__(self):
         super().__init__('gazebo_interface')
         
-        self.entity_pose_x = 0.24
+        self.entity_pose_x = 0.25
         self.entity_pose_y = 1.1905
         self.episode_count = 1
         self.model_dir_path = os.path.join(

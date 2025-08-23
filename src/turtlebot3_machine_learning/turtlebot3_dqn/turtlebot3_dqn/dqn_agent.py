@@ -179,18 +179,21 @@ class DQNAgent(Node):
             while True:
                 local_step += 1
 
-                q_values = self.model.predict(state)
+                q_values = self.model.predict(state, verbose=0)
                 sum_max_q += float(numpy.max(q_values))
-
-                action = int(self.get_action(state))
+                if self.parking_detect == False:
+                    action = 2
+                else:
+                    action = int(self.get_action(state))
+                
                 next_state, reward, done = self.step(action)
                 score += reward
 
                 msg = Float32MultiArray()
-                msg.data = [float(action), float(score), float(reward)]
+                msg.data = [float(action), float(score), float(reward), float(1.0 if self.parking_detect else 0.0)]
                 self.action_pub.publish(msg)
 
-                if self.train_mode:
+                if self.train_mode and self.parking_detect == True:
                     self.append_sample((state, action, reward, next_state, done))
                     self.train_model(done)
 
@@ -209,6 +212,7 @@ class DQNAgent(Node):
 
                     # ===== 에피소드 결과 저장 추가 =====
                     result_file = os.path.join(self.model_dir_path, "episode_score0821.csv")
+
                     with open(result_file, "a") as f:
                         f.write(f"{episode_num},{local_step},{score}\n")
                     # ===============================
@@ -276,22 +280,19 @@ class DQNAgent(Node):
         return state
 
     def get_action(self, state):
-        if self.parking_detect == False:
-            result = 2
-        else:
-            if self.train_mode:
-                self.step_counter += 1
-                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                    -1.0 * self.step_counter / self.epsilon_decay)
-                lucky = random.random()
-                if lucky > (1 - self.epsilon):
-                    result = random.randint(0, self.action_size - 1)
-                else:
-                    result = numpy.argmax(self.model.predict(state))
-            else:
-                result = numpy.argmax(self.model.predict(state))
-
-        return result
+        """
+        process()에서 parking_detect == True일 때만 호출됨을 전제로 한다.
+        -> 여기서는 순수하게 ε-greedy만 수행.
+        """
+        if self.train_mode:
+            self.step_counter += 1
+            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                -1.0 * self.step_counter / self.epsilon_decay
+            )
+            if random.random() < self.epsilon:
+                return random.randint(0, self.action_size - 1)
+        # exploit
+        return int(numpy.argmax(self.model.predict(state, verbose=0)))
 
 
     def step(self, action):
