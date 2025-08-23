@@ -156,6 +156,20 @@ class RLEnvironment(Node):
         #     qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
         # )
 
+        # ===== Reward coefficients (easy to tune) =====
+        self.R_SUCCESS = 10.0            # 성공점수(고정)
+        self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
+        self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
+        self.COLLISION_PENALTY = -30.    # 충돌 패널티 (가장 크게)
+        self.STEP_OVER_PENALTY = -30.    # 이동횟수 초과 패널티 (중간)
+        self.MOVE_PENALTY_MAX = 0.5     # 이동 패널티의 최대치(에피소드 길이만큼 누적되면 이만큼 차감)
+        self.PROGRESS_SHAPING = 0.2    # 비-터미널 스텝에서만 주는 미세한 진행 보상
+        self.DIST_WEIGHT = 0.3
+        # 
+        self.goal_yaw = 0.0           # 최종 정렬하고 싶은 방향 (예: 0 rad)
+        self.last_action = None       # 직전 행동 기억(보상에서 전/후진 판단용)
+        self.yaw_abs = math.pi           # 현재 |yaw|
+        self.prev_yaw_abs = math.pi      # 이전 |yaw| (shaping용)
 
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
@@ -362,17 +376,21 @@ class RLEnvironment(Node):
 
         # 터미널 보상
         if self.succeed:
-            # 가까운 곳에서 깔끔히 멈출수록 보너스 조금 더
-            bonus = 3.0 + max(0.0, 1.0 - d_norm) * 2.0   # 3.0~5.0
-            reward += bonus
+            # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
+            reward = (self.R_SUCCESS + roi_bonus)
 
-        if self.fail:  # 충돌 또는 타임아웃
-            # 라인이 엉망인 상태에서의 실패는 더 큰 패널티
-            penalty = 3.0 + (d_norm  * 2.0)                    # 3.0~5.0
-            reward -= penalty
-
-        # ----- 진행도 기준 업데이트 -----
-        # 다음 스텝을 위해 이전 거리를 현재 거리로 갱신
+        elif self.fail:
+            # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
+            # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
+            # 충돌 플래그가 True면 충돌 실패로 간주
+            if getattr(self, 'collision_flag', False) is True:
+                reward = self.COLLISION_PENALTY
+            else:
+                reward = self.STEP_OVER_PENALTY
+        else:
+            # 비-터미널: 얇은 shaping - 이동 소패널티
+            reward = shaping - (move_penalty * 0.2) + r_yaw_shaping + r_yaw_penalty + self.DIST_WEIGHT * distance_score
+        # 다음 스텝 대비 업데이트
         self.prev_goal_distance = self.goal_distance
 
         return float(reward)
