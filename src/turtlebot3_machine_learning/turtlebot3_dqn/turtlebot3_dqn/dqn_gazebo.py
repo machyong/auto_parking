@@ -36,7 +36,7 @@ class GazeboInterface(Node):
     def __init__(self):
         super().__init__('gazebo_interface')
         
-        self.entity_pose_x = 0.25
+        self.entity_pose_x = 0.24
         self.entity_pose_y = 1.1905
 
         if ROS_DISTRO == 'humble':

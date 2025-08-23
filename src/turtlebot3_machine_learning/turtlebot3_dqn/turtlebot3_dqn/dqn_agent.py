@@ -26,6 +26,7 @@ import random
 import sys
 import time
 
+
 import numpy
 import rclpy
 from rclpy.node import Node
@@ -105,7 +106,7 @@ class DQNAgent(Node):
         self.load_episode = 0
         self.parking_detect = False
         self.model_dir_path = os.path.join(
-            '/home/yong/auto_parking/saved_model',
+            '/home/yong/auto_parking',
             'saved_model'
         )
         # self.model_path = os.path.join(
@@ -206,7 +207,11 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
+<<<<<<< HEAD
                     result_file = os.path.join(self.model_dir_path, "episode_results0823.csv")
+=======
+                    result_file = os.path.join(self.model_dir_path, "episode_results0820.csv")
+>>>>>>> 8a7a2ef392f87f0d3fa13064736ffbcc752a368e
                     success_or_fail = "SUCCESS" if self.succeed else "FAIL"
                     with open(result_file, "a") as f:
                         f.write(f"{episode_num},{success_or_fail},{score}\n")
