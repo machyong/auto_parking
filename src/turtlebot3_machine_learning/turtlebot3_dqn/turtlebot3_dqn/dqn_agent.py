@@ -89,7 +89,7 @@ class DQNAgent(Node):
         self.learning_rate = 0.0007
         self.epsilon = 1.0
         self.step_counter = 0
-        self.epsilon_decay = 6000  # * self.stage
+        self.epsilon_decay = 1000  # * self.stage
         self.epsilon_min = 0.05
         self.batch_size = 128
         
@@ -207,11 +207,9 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
-<<<<<<< HEAD
+
                     result_file = os.path.join(self.model_dir_path, "episode_results0823.csv")
-=======
-                    result_file = os.path.join(self.model_dir_path, "episode_results0820.csv")
->>>>>>> 8a7a2ef392f87f0d3fa13064736ffbcc752a368e
+
                     success_or_fail = "SUCCESS" if self.succeed else "FAIL"
                     with open(result_file, "a") as f:
                         f.write(f"{episode_num},{success_or_fail},{score}\n")
