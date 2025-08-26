@@ -39,7 +39,7 @@ from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import load_model
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
-
+from datetime import datetime
 from turtlebot3_msgs.srv import Dqn
 # 추가 import
 import threading
@@ -109,6 +109,7 @@ class DQNAgent(Node):
             '/home/yong/auto_parking',
             'saved_model'
         )
+        self.drive_result = False
         # self.model_path = os.path.join(
         #     self.model_dir_path,
         #     'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
@@ -178,18 +179,21 @@ class DQNAgent(Node):
             while True:
                 local_step += 1
 
-                q_values = self.model.predict(state)
+                q_values = self.model.predict(state, verbose=0)
                 sum_max_q += float(numpy.max(q_values))
-
-                action = int(self.get_action(state))
+                if self.parking_detect == False:
+                    action = 2
+                else:
+                    action = int(self.get_action(state))
+                
                 next_state, reward, done = self.step(action)
                 score += reward
 
                 msg = Float32MultiArray()
-                msg.data = [float(action), float(score), float(reward)]
+                msg.data = [float(action), float(score), float(reward), float(1.0 if self.parking_detect else 0.0)]
                 self.action_pub.publish(msg)
 
-                if self.train_mode:
+                if self.train_mode and self.parking_detect == True:
                     self.append_sample((state, action, reward, next_state, done))
                     self.train_model(done)
 
@@ -207,12 +211,11 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
+                    today_str = datetime.now().strftime("%m%d")
+                    result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
 
-                    result_file = os.path.join(self.model_dir_path, "episode_results0823.csv")
-
-                    success_or_fail = "SUCCESS" if self.succeed else "FAIL"
                     with open(result_file, "a") as f:
-                        f.write(f"{episode_num},{success_or_fail},{score}\n")
+                        f.write(f"{episode_num},{local_step},{score}\n")
                     # ===============================
 
                     if LOGGING:
@@ -278,22 +281,19 @@ class DQNAgent(Node):
         return state
 
     def get_action(self, state):
-        if self.parking_detect == False:
-            result = 2
-        else:
-            if self.train_mode:
-                self.step_counter += 1
-                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                    -1.0 * self.step_counter / self.epsilon_decay)
-                lucky = random.random()
-                if lucky > (1 - self.epsilon):
-                    result = random.randint(0, self.action_size - 1)
-                else:
-                    result = numpy.argmax(self.model.predict(state))
-            else:
-                result = numpy.argmax(self.model.predict(state))
-
-        return result
+        """
+        process()에서 parking_detect == True일 때만 호출됨을 전제로 한다.
+        -> 여기서는 순수하게 ε-greedy만 수행.
+        """
+        if self.train_mode:
+            self.step_counter += 1
+            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                -1.0 * self.step_counter / self.epsilon_decay
+            )
+            if random.random() < self.epsilon:
+                return random.randint(0, self.action_size - 1)
+        # exploit
+        return int(numpy.argmax(self.model.predict(state, verbose=0)))
 
 
     def step(self, action):

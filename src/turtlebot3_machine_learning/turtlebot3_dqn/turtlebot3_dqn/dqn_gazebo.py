@@ -20,7 +20,7 @@
 import os
 import sys
 import time
-
+from datetime import datetime
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
@@ -36,9 +36,13 @@ class GazeboInterface(Node):
     def __init__(self):
         super().__init__('gazebo_interface')
         
-        self.entity_pose_x = 0.24
+        self.entity_pose_x = 0.25
         self.entity_pose_y = 1.1905
-
+        self.episode_count = 1
+        self.model_dir_path = os.path.join(
+            '/home/yong/auto_parking',
+            'saved_model'
+        )
         if ROS_DISTRO == 'humble':
             self.reset_simulation_client = self.create_client(Empty, 'reset_simulation')
 
@@ -77,6 +81,11 @@ class GazeboInterface(Node):
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
+        today_str = datetime.now().strftime("%m%d")
+        result_file = os.path.join(self.model_dir_path, "episode_results" + today_str +".csv")
+        with open(result_file, "a") as f:
+                        f.write(f"{self.episode_count},succeed\n")
+        self.episode_count += 1
         self.reset_simulation()
         time.sleep(0.2)
         return response
@@ -88,6 +97,11 @@ class GazeboInterface(Node):
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
+        today_str = datetime.now().strftime("%m%d")
+        result_file = os.path.join(self.model_dir_path, "episode_results" + today_str +".csv")
+        with open(result_file, "a") as f:
+                        f.write(f"{self.episode_count},failed\n")
+        self.episode_count += 1
         return response
 
     def initialize_env_callback(self, request, response):

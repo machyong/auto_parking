@@ -31,6 +31,7 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from std_srvs.srv import Empty
 import math
+from datetime import datetime
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
@@ -54,7 +55,6 @@ class RLEnvironment(Node):
         self.robot_pose_x = 0.0
         self.robot_pose_y = 0.0
         self.episode_count = 1
-
         # self.action_size = 5
         self.action_size = 11
         self.max_step = 300
@@ -63,6 +63,7 @@ class RLEnvironment(Node):
         self.fail = False
         self.succeed = False
         self.parkingline_ratio = 0.0
+        self.parking_detect == False
         self.collisoin_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
@@ -105,7 +106,10 @@ class RLEnvironment(Node):
             self.odom_sub_callback,
             qos
         )
-        
+        self.model_dir_path = os.path.join(
+            '/home/yong/auto_parking',
+            'saved_model'
+        )
         ######################## 카메라 3종으로 교체  service client로
         # self.scan_sub = self.create_subscription(
         #     LaserScan,
@@ -161,6 +165,14 @@ class RLEnvironment(Node):
             self.reset_environment_callback
         )
 
+        self.parking_sub = self.create_subscription(
+            Bool,
+            '/parking_zone_detected',
+            self.parking_sub_callback,
+            10,
+            callback_group=self.cb_group
+        )
+
         # 충돌센서 토픽 추가
         # self.bumper_sub = self.create_subscription(
         #     ContactsState,
@@ -207,7 +219,7 @@ class RLEnvironment(Node):
             self.get_logger().info(
                 'goal initialized at [%f, %f]' % (self.goal_pose_x, self.goal_pose_y)
             )
-
+    
         return response
 
     # dqn_agent에서 학습 끝나고 다음 에피소드를 시작할 때 호출
@@ -318,10 +330,10 @@ class RLEnvironment(Node):
         state.append(float(self.goal_distance))
         state.append(float(yaw_error))
         self.local_step += 1
-        # self.get_logger().info(f'current step : {self.local_step}')
+        self.get_logger().info(f'current step : {self.local_step}')
 
-        self.pbar.n = self.local_step
-        self.pbar.refresh()
+        # self.pbar.n = self.local_step
+        # self.pbar.refresh()
 
         msg = Twist() 
         msg.linear.x = 0.
@@ -330,12 +342,13 @@ class RLEnvironment(Node):
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
-            
+
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
             self.local_step = 0
-
+            self.episode_count += 1
+            self.parking_detect == False
             self.call_task_succeed()
         # # self.min_obstacle_distanse 산출방식 수정 필요
         # if self.bumper_in_contact:  # Contact Sensor 충돌 조
@@ -346,7 +359,9 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
+            self.parking_detect == False
             self.local_step = 0
+            self.episode_count += 1
             self.call_task_failed()
 
         # 시간초과
@@ -357,10 +372,39 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
+            self.parking_detect == False
+            self.episode_count += 1
+            self.local_step = 0
+            self.call_task_failed()
+
+        if self.robot_pose_y <= 0.74:
+            self.get_logger().info('Time out!')
+            self.fail = True
+            self.done = True
+            if ROS_DISTRO == 'humble':
+                self.cmd_vel_pub.publish(msg)
+                time.sleep(1.)
+            self.parking_detect == False
+            self.episode_count += 1
+            self.local_step = 0
+            self.call_task_failed()
+
+        if self.robot_pose_y >= 1.68 and self.parking_detect == True:
+            self.get_logger().info('Time out!')
+            self.fail = True
+            self.done = True
+            if ROS_DISTRO == 'humble':
+                self.cmd_vel_pub.publish(msg)
+                time.sleep(1.)
+            self.parking_detect == False
+            self.episode_count += 1
             self.local_step = 0
             self.call_task_failed()
 
         return state
+    
+    def parking_sub_callback(self, msg):
+        self.parking_detect = msg.data
 
     def calculate_reward(self):
         # ----- 공통 스칼라 -----
@@ -391,13 +435,18 @@ class RLEnvironment(Node):
         r_yaw_shaping = 0.3 * yaw_improve    # C1=0.3
         yaw_norm = float(self.yaw_abs / math.pi)  # 0(정렬) ~ 1(정반대)
         r_yaw_penalty = -0.4 * yaw_norm
-        
-        suc_dis = 20*(1- abs(1.1905 - self.robot_pose_y))
 
+        # 성공시 거리 가산점
+        suc_dis = 20*(1- abs(1.1905 - self.robot_pose_y))
         # ----- 터미널 보상 -----
         if self.succeed:
             # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
-            reward = (self.R_SUCCESS + roi_bonus)
+            reward = (self.R_SUCCESS + roi_bonus+suc_dis)
+            today_str = datetime.now().strftime("%m%d")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+
+            with open(result_file, "a") as f:
+                f.write(f"{self.episode_count},{self.local_step},{reward},succeed\n")
 
         elif self.fail:
             # 실패 종류 판정: 충돌 vs 이동횟수 초과(타임아웃)
@@ -410,8 +459,13 @@ class RLEnvironment(Node):
 
                 with open(result_file, "a") as f:
                     f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
+                today_str = datetime.now().strftime("%m%d")
+                result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+
+                with open(result_file, "a") as f:
+                    f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
             else:
-                reward = -self.STEP_OVER_PENALTY
+                reward = self.STEP_OVER_PENALTY
                 today_str = datetime.now().strftime("%m%d")
                 result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
 
@@ -430,6 +484,9 @@ class RLEnvironment(Node):
         self.prev_yaw_abs = self.yaw_abs
 
         return float(reward)
+
+
+
 
 
     # 로봇 동작 수행
