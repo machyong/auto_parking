@@ -35,6 +35,7 @@ import math
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
 from tqdm import tqdm
+from datetime import datetime
 # from std_msgs.msg import Float64
 # from gazebo_msgs.msg import ContactsState  # 맨 위 import 섹션에 추가
 
@@ -52,10 +53,11 @@ class RLEnvironment(Node):
         self.goal_pose_y = 1.1942
         self.robot_pose_x = 0.0
         self.robot_pose_y = 0.0
+        self.episode_count = 1
 
         # self.action_size = 5
         self.action_size = 11
-        self.max_step = 400
+        self.max_step = 300
 
         self.done = False
         self.fail = False
@@ -70,6 +72,10 @@ class RLEnvironment(Node):
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
         self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
+        self.model_dir_path = os.path.join(
+            '/home/dykim/auto_parking',
+            'saved_model'
+        )
 
         self.outcome = True
         # # 충돌센서 변수 추가
@@ -164,7 +170,7 @@ class RLEnvironment(Node):
         # )
 
         # ===== Reward coefficients (easy to tune) =====
-        self.R_SUCCESS = 10.0            # 성공점수(고정)
+        self.R_SUCCESS = 50.0            # 성공점수(고정)
         self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
         self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
         self.COLLISION_PENALTY = -50.    # 충돌 패널티 (가장 크게)
@@ -320,7 +326,7 @@ class RLEnvironment(Node):
         msg = Twist() 
         msg.linear.x = 0.
         msg.angular.z = 0.
-        if self.goal_distance < 0.04:
+        if (0.966 <= self.robot_pose_y <= 1.413) and self.robot_pose_x <= 0.25:
             self.get_logger().info('Goal Reached')
             self.succeed = True
             self.done = True
@@ -385,6 +391,9 @@ class RLEnvironment(Node):
         r_yaw_shaping = 0.3 * yaw_improve    # C1=0.3
         yaw_norm = float(self.yaw_abs / math.pi)  # 0(정렬) ~ 1(정반대)
         r_yaw_penalty = -0.4 * yaw_norm
+        
+        suc_dis = 20*(1- abs(1.1905 - self.robot_pose_y))
+
         # ----- 터미널 보상 -----
         if self.succeed:
             # 성공: (0.5 - ROI패널티) + (거리점수 - 이동패널티)
@@ -395,12 +404,27 @@ class RLEnvironment(Node):
             # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
             # 충돌 플래그가 True면 충돌 실패로 간주
             if getattr(self, 'collision_flag', False) is True:
-                reward = self.COLLISION_PENALTY
+                reward = -self.COLLISION_PENALTY-suc_dis
+                today_str = datetime.now().strftime("%m%d")
+                result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+
+                with open(result_file, "a") as f:
+                    f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
             else:
-                reward = self.STEP_OVER_PENALTY
+                reward = -self.STEP_OVER_PENALTY
+                today_str = datetime.now().strftime("%m%d")
+                result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+
+                with open(result_file, "a") as f:
+                    f.write(f"{self.episode_count},{self.local_step},{reward},failed\n")
         else:
             # 비-터미널: 얇은 shaping - 이동 소패널티
-            reward = shaping - (move_penalty * 0.2) + r_yaw_shaping + r_yaw_penalty + self.DIST_WEIGHT * distance_score
+            reward = shaping - (move_penalty * 0.2) + r_yaw_shaping -r_yaw_penalty + 0.4 * distance_score
+            today_str = datetime.now().strftime("%m%d")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+
+            with open(result_file, "a") as f:
+                f.write(f"{self.episode_count},{self.local_step},{reward},parking\n")
         # 다음 스텝 대비 업데이트
         self.prev_goal_distance = self.goal_distance
         self.prev_yaw_abs = self.yaw_abs
