@@ -453,7 +453,7 @@ class RLEnvironment(Node):
             # (코드는 이미 충돌시 self.fail=True, 타임아웃시 self.fail=True가 설정됨)
             # 충돌 플래그가 True면 충돌 실패로 간주
             if getattr(self, 'collision_flag', False) is True:
-                reward = -self.COLLISION_PENALTY-suc_dis
+                reward = self.COLLISION_PENALTY-suc_dis
                 today_str = datetime.now().strftime("%m%d")
                 result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
 
@@ -465,7 +465,7 @@ class RLEnvironment(Node):
                 with open(result_file, "a") as f:
                     f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
             else:
-                reward = self.STEP_OVER_PENALTY
+                reward = self.STEP_OVER_PENALTY-suc_dis
                 today_str = datetime.now().strftime("%m%d")
                 result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
 
