@@ -39,7 +39,7 @@ from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import load_model
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
-
+from datetime import datetime
 from turtlebot3_msgs.srv import Dqn
 # 추가 import
 import threading
@@ -89,7 +89,7 @@ class DQNAgent(Node):
         self.learning_rate = 0.0007
         self.epsilon = 1.0
         self.step_counter = 0
-        self.epsilon_decay = 6000  # * self.stage
+        self.epsilon_decay = 1000  # * self.stage
         self.epsilon_min = 0.05
         self.batch_size = 128
         
@@ -211,7 +211,8 @@ class DQNAgent(Node):
                     self.result_pub.publish(msg)
 
                     # ===== 에피소드 결과 저장 추가 =====
-                    result_file = os.path.join(self.model_dir_path, "episode_score0821.csv")
+                    today_str = datetime.now().strftime("%m%d")
+                    result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
 
                     with open(result_file, "a") as f:
                         f.write(f"{episode_num},{local_step},{score}\n")
