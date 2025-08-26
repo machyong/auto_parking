@@ -20,7 +20,7 @@
 import os
 import sys
 import time
-
+from datetime import datetime
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
@@ -81,7 +81,8 @@ class GazeboInterface(Node):
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
-        result_file = os.path.join(self.model_dir_path, "episode_results0821.csv")
+        today_str = datetime.now().strftime("%m%d")
+        result_file = os.path.join(self.model_dir_path, "episode_results" + today_str +".csv")
         with open(result_file, "a") as f:
                         f.write(f"{self.episode_count},succeed\n")
         self.episode_count += 1
@@ -96,7 +97,8 @@ class GazeboInterface(Node):
         response.pose_x = self.entity_pose_x
         response.pose_y = self.entity_pose_y
         response.success = True
-        result_file = os.path.join(self.model_dir_path, "episode_results0821.csv")
+        today_str = datetime.now().strftime("%m%d")
+        result_file = os.path.join(self.model_dir_path, "episode_results" + today_str +".csv")
         with open(result_file, "a") as f:
                         f.write(f"{self.episode_count},failed\n")
         self.episode_count += 1
