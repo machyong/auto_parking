@@ -50,7 +50,7 @@ from rclpy.executors import MultiThreadedExecutor
 tensorflow.config.set_visible_devices([], 'GPU')
 
 LOGGING = True
-current_time = datetime.datetime.now().strftime('[%mm%dd-%H:%M]')
+current_time = datetime.now().strftime('[%mm%dd-%H:%M]')
 
 # 로스값 계산
 class DQNMetric(tensorflow.keras.metrics.Metric):
@@ -78,8 +78,8 @@ class DQNAgent(Node):
         super().__init__('dqn_agent')
         # 학습 관련 기본값
         self.train_mode = True
-        self.state_size = 2
-        self.action_size = 11
+        self.state_size = 4
+        self.action_size = 10
         self.max_training_episodes = int(max_training_episodes)
 
         self.done = False

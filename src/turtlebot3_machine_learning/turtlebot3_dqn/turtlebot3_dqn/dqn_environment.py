@@ -26,6 +26,7 @@ from nav_msgs.msg import Odometry
 import numpy
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
@@ -56,14 +57,14 @@ class RLEnvironment(Node):
         self.robot_pose_y = 0.0
         self.episode_count = 1
         # self.action_size = 5
-        self.action_size = 11
+        self.action_size = 10
         self.max_step = 300
 
         self.done = False
         self.fail = False
         self.succeed = False
         self.parkingline_ratio = 0.0
-        self.parking_detect == False
+        self.parking_detect = False
         self.collisoin_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
@@ -164,7 +165,7 @@ class RLEnvironment(Node):
             'reset_environment',
             self.reset_environment_callback
         )
-
+        self.cb_group = ReentrantCallbackGroup()
         self.parking_sub = self.create_subscription(
             Bool,
             '/parking_zone_detected',
@@ -183,7 +184,7 @@ class RLEnvironment(Node):
 
         # ===== Reward coefficients (easy to tune) =====
         self.R_SUCCESS = 50.0            # 성공점수(고정)
-        self.DIST_MAX = 0.5             # 거리점수 최대 (0.5)
+        self.DIST_MAX = 0.6             # 거리점수 최대 (0.5)
         self.SUCCESS_PENALTY_MAX = 0.5  # 전면주차 억제: ROI 작을수록 패널티 ↑, 최대 0.5
         self.COLLISION_PENALTY = -50.    # 충돌 패널티 (가장 크게)
         self.STEP_OVER_PENALTY = -30.    # 이동횟수 초과 패널티 (중간)
@@ -326,9 +327,13 @@ class RLEnvironment(Node):
 
     def calculate_state(self):
         state = []
+        x_diff = 0.25 - self.robot_pose_x
+        y_diff = 1.1905 - self.robot_pose_y
         yaw_error = self._wrap(self.goal_yaw - self.robot_pose_theta)
         state.append(float(self.goal_distance))
         state.append(float(yaw_error))
+        state.append(float(x_diff))
+        state.append(float(y_diff))
         self.local_step += 1
         self.get_logger().info(f'current step : {self.local_step}')
 
@@ -460,10 +465,7 @@ class RLEnvironment(Node):
                 with open(result_file, "a") as f:
                     f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
                 today_str = datetime.now().strftime("%m%d")
-                result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
 
-                with open(result_file, "a") as f:
-                    f.write(f"{self.episode_count},{self.local_step},{reward},crash\n")
             else:
                 reward = self.STEP_OVER_PENALTY-suc_dis
                 today_str = datetime.now().strftime("%m%d")
