@@ -353,7 +353,7 @@ class RLEnvironment(Node):
                 time.sleep(1.)
             self.local_step = 0
             self.episode_count += 1
-            self.parking_detect == False
+            self.parking_detect = False
             self.call_task_succeed()
         # # self.min_obstacle_distanse 산출방식 수정 필요
         # if self.bumper_in_contact:  # Contact Sensor 충돌 조
@@ -364,7 +364,7 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
-            self.parking_detect == False
+            self.parking_detect = False
             self.local_step = 0
             self.episode_count += 1
             self.call_task_failed()
@@ -377,7 +377,7 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
-            self.parking_detect == False
+            self.parking_detect = False
             self.episode_count += 1
             self.local_step = 0
             self.call_task_failed()
@@ -389,7 +389,7 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
-            self.parking_detect == False
+            self.parking_detect = False
             self.episode_count += 1
             self.local_step = 0
             self.call_task_failed()
@@ -401,7 +401,7 @@ class RLEnvironment(Node):
             if ROS_DISTRO == 'humble':
                 self.cmd_vel_pub.publish(msg)
                 time.sleep(1.)
-            self.parking_detect == False
+            self.parking_detect = False
             self.episode_count += 1
             self.local_step = 0
             self.call_task_failed()
