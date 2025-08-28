@@ -62,10 +62,10 @@ class RLEnvironment(Node):
         self.parkingline_ratio = 0.0
         self.parking_detect = False
         self.training_active = False      # False -> True 전이되면 학습/step 시작
-        self.prev_parking_detect = False
         self.pre_step = 0                 # 주차감지 전 전진 카운트(선택적 로깅용)
         self.local_step = 0               # 학습구간(감지 이후)에서만 증가
 
+        self.start_triggered = False
         self.collision_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
@@ -346,7 +346,6 @@ class RLEnvironment(Node):
         # 학습/검출/스텝 관련 플래그/카운터 리셋
         self.training_active = False
         self.parking_detect = False
-        self.prev_parking_detect = False
         self.detect_streak = 0  # 아래 C에서 추가할 변수
         self.local_step = 0
         self.pre_step = 0
@@ -362,11 +361,10 @@ class RLEnvironment(Node):
             self.call_task_succeed()
         else:
             self.call_task_failed()
-            
-        self.done = False
-        self.succeed = False
-        self.fail = False
+
         self.collision_flag = False
+        self.training_active = False
+        self.start_triggered = False
 
     def calculate_state(self):
         state = []
@@ -376,16 +374,18 @@ class RLEnvironment(Node):
 
             # ---- phase 전환 감지 ----
         # parking_detect가 False->True로 바뀌는 순간을 학습 시작점으로 정의
-        if (not self.prev_parking_detect) and self.parking_detect:
+        if (not self.training_active) and self.start_triggered:
             self.training_active = True
-            self.local_step = 0       # << 감지시점부터 step 0부터 시작
-            # pre_step은 유지(선택), 이후부터 학습 스텝 카운트
-        self.prev_parking_detect = bool(self.parking_detect)
+            self.start_triggered = False
+            self.local_step = 0      # << 감지시점부터 step 0부터 시작
 
         # ---- 스텝 카운트 ----
         if self.training_active:
             self.local_step += 1
-            self.get_logger().info(f'[TRAIN] current step : {self.local_step}')
+            self.pbar.n = self.local_step
+            self.pbar.set_description(f"[TRAIN] Ep {self.episode_count}")
+            self.pbar.refresh()
+
         else:
             # 학습 이전 구간(전진만) - 선택: 로깅/분석용
             self.pre_step += 1
@@ -433,7 +433,7 @@ class RLEnvironment(Node):
                     time.sleep(1.)
                 self._episode_cleanup(success=False)
 
-            if self.robot_pose_y >= 1.86 and self.parking_detect == True:
+            if self.robot_pose_y >= 1.86:
                 self.get_logger().info('Time out!2')
                 self.fail = True
                 self.done = True
@@ -445,7 +445,7 @@ class RLEnvironment(Node):
         return state
     
     def parking_sub_callback(self, msg):
-        self.parking_detect = msg.data
+        self.start_triggered = True
 
     def calculate_reward(self):
         # === 스텝 페널티(총 −STEP_BUDGET가 되도록 균등 분배) ===
@@ -543,7 +543,6 @@ class RLEnvironment(Node):
             self.done = False
             self.succeed = False
             self.fail = False
-
         return response
 
 
