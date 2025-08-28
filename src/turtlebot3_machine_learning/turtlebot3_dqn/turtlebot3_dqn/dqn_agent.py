@@ -92,9 +92,10 @@ class DQNAgent(Node):
         self.epsilon_min = 0.05
         self.batch_size = 128
         self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
-        
+        self.episode_num = 0
         self.replay_memory = collections.deque(maxlen=500000)
         self.min_replay_memory_size = 5000
+        self.pre_action = 0
 
         self.model = self.create_qnetwork()
         self.target_model = self.create_qnetwork()
@@ -146,7 +147,7 @@ class DQNAgent(Node):
         self.env_make()
         time.sleep(1.0)
 
-        episode_num = self.load_episode
+        self.episode_num = self.load_episode
 
         for episode in range(self.load_episode + 1, self.max_training_episodes + 1):
 
@@ -158,8 +159,8 @@ class DQNAgent(Node):
             self.training_active = False
             self.start_triggered = False
             local_step = 0; pre_step = 0; score = 0.0; sum_max_q = 0.0
-            episode_num += 1
-            self.get_logger().info(f'Episode : {episode_num}')
+            self.episode_num += 1
+            self.get_logger().info(f'Episode : {self.episode_num}')
             time.sleep(1.5)
 
             while True:
@@ -179,13 +180,13 @@ class DQNAgent(Node):
                     # train-phase: ε-greedy + q 추적
                     local_step += 1
                     self.pbar.n = local_step
-                    self.pbar.set_description(f"[TRAIN] Ep {episode_num}")
+                    self.pbar.set_description(f"[TRAIN] Ep {self.episode_num}")
                     self.pbar.refresh()
 
                     q_values = self.model.predict(state, verbose=0)
                     sum_max_q += float(numpy.max(q_values))
                     action = int(self.get_action(state))  # 이 함수 내부에서만 ε-감쇠 진행
-
+                    self.pre_action = action
                 # ---- 환경 진행 ----
                 next_state, reward, done = self.step(action)
 
@@ -220,14 +221,14 @@ class DQNAgent(Node):
                         result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
 
                         with open(result_file, "a") as f:
-                            f.write(f"{episode_num},{local_step},{score}\n")
+                            f.write(f"{self.episode_num},{local_step},{score}\n")
                         # ===============================
 
                         if LOGGING:
                             self.dqn_reward_metric.update_state(score)
                             with self.dqn_reward_writer.as_default():
                                 tensorflow.summary.scalar(
-                                    'dqn_reward', self.dqn_reward_metric.result(), step=episode_num
+                                    'dqn_reward', self.dqn_reward_metric.result(), step=self.episode_num
                                 )
                             self.dqn_reward_metric.reset_states()
 
@@ -297,13 +298,30 @@ class DQNAgent(Node):
         """
         if self.train_mode:
             self.step_counter += 1
-            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                -1.0 * self.step_counter / self.epsilon_decay
-            )
+            if (self.episode_num >= 400) and (self.episode_num % 50 == 13):
+                self.epsilon = 0.5
+            else:
+                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                    -1.0 * self.step_counter / self.epsilon_decay
+                    )
             if random.random() < self.epsilon:
-                return random.randint(0, self.action_size - 1)
-        # exploit
-        return int(numpy.argmax(self.model.predict(state, verbose=0)))
+                if self.pre_action <= 4:
+                    nums = [i for i in range(self.action_size) if i != self.pre_action + 5]
+                    return random.choice(nums)
+                elif self.pre_action >= 5:
+                    nums = [i for i in range(self.action_size) if i != self.pre_action - 5]
+                    return random.choice(nums)
+
+        # exploit (모델 예측)
+        q_values = self.model.predict(state, verbose=0)[0]
+
+        # 불허 action을 제외 (예: pre_action 반대되는 행동 제외)
+        if self.pre_action <= 4:
+            q_values[self.pre_action + 5] = -1e9   # 매우 작은 값으로 만들어서 argmax에서 선택 안 되도록
+        elif self.pre_action >= 5:
+            q_values[self.pre_action - 5] = -1e9
+
+        return int(numpy.argmax(q_values))
 
 
     def step(self, action):
