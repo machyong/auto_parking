@@ -164,7 +164,7 @@ class DQNAgent(Node):
 
             while True:
                 
-                if (not self.training_active) and self.start_triggered:
+                if (not self.training_active) and (self.start_triggered or pre_step > 600):
                     self.training_active = True
                     self.start_triggered = False
                     local_step = 0; pre_step = 0; score = 0.0; sum_max_q = 0.0

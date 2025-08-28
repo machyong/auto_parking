@@ -208,8 +208,7 @@ class RLEnvironment(Node):
         # 잠재함수: 값이 작아질수록 좋은 상태
         return ( self.KD   * float(self.goal_distance)
             + self.KY   * self._yaw_err()
-            + self.KX   * self._depth_err()
-            + self.KROI * (1.0 - self._roi_norm()) )
+            + self.KX   * self._depth_err())
 
     def _in_capture_zone(self):
         return (self.robot_pose_x <= self.CAPTURE_X_MAX) and \
@@ -483,7 +482,7 @@ class RLEnvironment(Node):
             roi_bonus       =  5.0 * self._roi_norm()
 
             reward += ( + self.OUTCOME_BUDGET
-                        + y_align_bonus + yaw_align_bonus + depth_bonus + roi_bonus )
+                        + y_align_bonus + yaw_align_bonus + depth_bonus + roi_bonus + 60 )
 
             # 로깅
             today_str = datetime.now().strftime("%m%d")
