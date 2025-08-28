@@ -157,16 +157,18 @@ class DQNAgent(Node):
             episode_num += 1
             self.get_logger().info(f'Episode : {episode_num}')
             local_step = 0
+            pre_step = 0
             score = 0
             sum_max_q = 0.0
             time.sleep(1.5)
 
             while True:
-                
+
                 if not self.training_active and self.parking_detect:
                     # False -> True로 바뀌는 순간을 "학습 시작점"으로 설정
                     self.training_active = True
                     local_step = 0
+                    pre_step = 0
                     score = 0.0
                     sum_max_q = 0.0
                     # 필요시 state를 고정하고 싶으면 유지, 아니면 바로 다음 루프에서 next_state 사용
