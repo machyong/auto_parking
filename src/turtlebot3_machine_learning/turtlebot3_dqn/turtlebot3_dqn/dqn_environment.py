@@ -418,13 +418,15 @@ class RLEnvironment(Node):
 
     def calculate_reward(self):
         # === 스텝 페널티(총 −STEP_BUDGET가 되도록 균등 분배) ===
-        step_pen = - self.STEP_BUDGET / float(self.max_step)
+        # 총합이 -STEP_BUDGET이 되도록 정규화
+        step_scale = (2.0 * self.STEP_BUDGET) / (self.max_step * (self.max_step + 1))
+        step_pen = - step_scale * self.local_step   # local_step: 1,2,3,...
 
         # === 텔레스코핑(PBRS) shaping: λ[γΦ(s′) − Φ(s)] ===
         phi_now = self._phi()
         if self._phi_prev is None:
             self._phi_prev = phi_now
-        pbrs = self.SHAPING_LAMBDA * (self._phi_prev - self.GAMMA * phi_now)
+        pbrs = self.SHAPING_LAMBDA * (self.GAMMA * phi_now - self._phi_prev)
         self._phi_prev = phi_now
 
         # === 품질 차분(정규화 지표의 변화량) – 선택/설명용 ===

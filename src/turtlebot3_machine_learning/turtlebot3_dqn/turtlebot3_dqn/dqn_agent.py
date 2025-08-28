@@ -80,7 +80,7 @@ class DQNAgent(Node):
         self.state_size = 2
         self.action_size = 10
         self.max_training_episodes = int(max_training_episodes)
-
+        self.training_active = False           # 학습 구간인지 여부
         self.done = False
         self.succeed = False
         self.fail = False
@@ -109,20 +109,6 @@ class DQNAgent(Node):
             'saved_model'
         )
         self.drive_result = False
-        # self.model_path = os.path.join(
-        #     self.model_dir_path,
-        #     'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
-        # )
-
-        # if self.load_model:
-        #     self.model.set_weights(load_model(self.model_path).get_weights())
-        #     with open(os.path.join(
-        #         self.model_dir_path,
-        #         'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.json'
-        #     )) as outfile:
-        #         param = json.load(outfile)
-        #         self.epsilon = param.get('epsilon')
-        #         self.step_counter = param.get('step_counter')
 
         if LOGGING:
             tensorboard_file_name = current_time + ' dqn_stage' + '_reward'
@@ -176,23 +162,43 @@ class DQNAgent(Node):
             time.sleep(1.5)
 
             while True:
-                local_step += 1
-
-                q_values = self.model.predict(state, verbose=0)
-                sum_max_q += float(numpy.max(q_values))
-                if self.parking_detect == False:
-                    action = 2
-                else:
-                    action = int(self.get_action(state))
                 
-                next_state, reward, done = self.step(action)
-                score += reward
+                if not self.training_active and self.parking_detect:
+                    # False -> True로 바뀌는 순간을 "학습 시작점"으로 설정
+                    self.training_active = True
+                    local_step = 0
+                    score = 0.0
+                    sum_max_q = 0.0
+                    # 필요시 state를 고정하고 싶으면 유지, 아니면 바로 다음 루프에서 next_state 사용
 
+                # ---- action 선택 ----
+                if not self.training_active:
+                    # pre-phase: 앞으로만 진행(학습/ε 없음)
+                    action = 2
+                    pre_step += 1
+                else:
+                    # train-phase: ε-greedy + q 추적
+                    local_step += 1
+                    q_values = self.model.predict(state, verbose=0)
+                    sum_max_q += float(numpy.max(q_values))
+                    action = int(self.get_action(state))  # 이 함수 내부에서만 ε-감쇠 진행
+
+                # ---- 환경 진행 ----
+                next_state, reward, done = self.step(action)
+
+                # ---- 퍼블리시 (phase 플래그 포함: 0=pre, 1=train) ----
+                phase_flag = 1.0 if self.training_active else 0.0
                 msg = Float32MultiArray()
-                msg.data = [float(action), float(score), float(reward), float(1.0 if self.parking_detect else 0.0)]
+                if self.training_active:
+                    score += reward
+                    msg.data = [float(action), float(score), float(reward), phase_flag]
+                else:
+                    # pre-phase: 점수/보상 집계하지 않음
+                    msg.data = [float(action), 0.0, 0.0, phase_flag]
                 self.action_pub.publish(msg)
 
-                if self.train_mode and self.parking_detect == True:
+                # ---- 학습은 train-phase에만 ----
+                if self.training_active:
                     self.append_sample((state, action, reward, next_state, done))
                     self.train_model(done)
 
@@ -203,33 +209,36 @@ class DQNAgent(Node):
                         self.parking_detect = False
                         print(f'parking_detect 초기화 : {self.parking_detect}')
                         time.sleep(0.1)
-                    avg_max_q = sum_max_q / local_step if local_step > 0 else 0.0
+                    if self.training_active:
+                        avg_max_q = sum_max_q / local_step if local_step > 0 else 0.0
 
-                    msg = Float32MultiArray()
-                    msg.data = [float(score), float(avg_max_q)]
-                    self.result_pub.publish(msg)
+                        msg = Float32MultiArray()
+                        msg.data = [float(score), float(avg_max_q)]
+                        self.result_pub.publish(msg)
 
-                    # ===== 에피소드 결과 저장 추가 =====
-                    today_str = datetime.datetime.now().strftime("%m%d")
-                    result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
+                        # ===== 에피소드 결과 저장 추가 =====
+                        today_str = datetime.datetime.now().strftime("%m%d")
+                        result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
 
-                    with open(result_file, "a") as f:
-                        f.write(f"{episode_num},{local_step},{score}\n")
-                    # ===============================
+                        with open(result_file, "a") as f:
+                            f.write(f"{episode_num},{local_step},{score}\n")
+                        # ===============================
 
-                    if LOGGING:
-                        self.dqn_reward_metric.update_state(score)
-                        with self.dqn_reward_writer.as_default():
-                            tensorflow.summary.scalar(
-                                'dqn_reward', self.dqn_reward_metric.result(), step=episode_num
-                            )
-                        self.dqn_reward_metric.reset_states()
+                        if LOGGING:
+                            self.dqn_reward_metric.update_state(score)
+                            with self.dqn_reward_writer.as_default():
+                                tensorflow.summary.scalar(
+                                    'dqn_reward', self.dqn_reward_metric.result(), step=episode_num
+                                )
+                            self.dqn_reward_metric.reset_states()
 
-                    print(
-                        'Episode:', episode,
-                        'score:', score,
-                        'memory length:', len(self.replay_memory),
-                        'epsilon:', self.epsilon)
+                        print(
+                            'Episode:', episode,
+                            'score:', score,
+                            'memory length:', len(self.replay_memory),
+                            'epsilon:', self.epsilon)
+                    else:
+                        self.get_logger().info(f"Episode {episode} ended before training activated")
 
                     param_keys = ['epsilon', 'step']
                     param_values = [self.epsilon, self.step_counter]
