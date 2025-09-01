@@ -54,7 +54,7 @@ class RLEnvironment(Node):
         self.robot_pose_y = 0.0
         self.episode_count = 1
         self.action_size = 10
-        self.max_step = 300
+        self.max_step = 200
 
         self.done = False
         self.fail = False
@@ -74,7 +74,7 @@ class RLEnvironment(Node):
         self.front_ranges = []
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
-        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
+        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True,ncols=80)
         self.model_dir_path = os.path.join(
             '/home/dykim/auto_parking',
             'saved_model'
@@ -156,8 +156,8 @@ class RLEnvironment(Node):
         self.goal_yaw = 0.0   # 후면주차: 차량 헤딩이 슬롯 밖(0) 향하도록
 
         # ===== [NEW] 보상 예산(점수 분배) =====
-        self.OUTCOME_BUDGET = 25.0   # 성공/실패 터미널 보상 절대값
-        self.STEP_BUDGET    = 25.0   # 스텝 패널티 총합
+        self.OUTCOME_BUDGET = 15.0   # 성공/실패 터미널 보상 절대값
+        self.STEP_BUDGET    = 50.0   # 스텝 패널티 총합
         # 텔레스코핑(PBRS) 총합 상한 25.0
 
         # ===== [NEW] 잠재함수(PBRS) 계수 및 감쇠 =====
@@ -456,7 +456,7 @@ class RLEnvironment(Node):
         phi_now = self._phi()
         if self._phi_prev is None:
             self._phi_prev = phi_now
-        pbrs = self.SHAPING_LAMBDA * (self.GAMMA * phi_now - self._phi_prev)
+        pbrs = - self.SHAPING_LAMBDA * (self.GAMMA * phi_now - self._phi_prev)
         self._phi_prev = phi_now
 
         # === 품질 차분(정규화 지표의 변화량) – 선택/설명용 ===
@@ -486,15 +486,15 @@ class RLEnvironment(Node):
 
             # 로깅
             today_str = datetime.now().strftime("%m%d")
-            result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + '5000' + ".csv")
             with open(result_file, "a") as f:
                 f.write(f"{self.episode_count},{self.local_step},{reward},succeed\n")
 
         elif self.fail:
             # 실패 절대 품질 감점 + Outcome
-            y_bad   = - 8.0 * self._y_err()
-            yaw_bad = - 8.0 * self._yaw_err()
-            depth_bad = - 8.0 * self._depth_err()
+            y_bad   = - 4.0 * self._y_err()
+            yaw_bad = - 4.0 * self._yaw_err()
+            depth_bad = - 4.0 * self._depth_err()
             outcome = "failed"
 
             if getattr(self, 'collision_flag', False) is True:
@@ -506,7 +506,7 @@ class RLEnvironment(Node):
             reward += (y_bad + yaw_bad + depth_bad)
 
             today_str = datetime.now().strftime("%m%d")
-            result_file = os.path.join(self.model_dir_path, "step_reward" + today_str + ".csv")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + '5000' + ".csv")
             with open(result_file, "a") as f:
                 f.write(f"{self.episode_count},{self.local_step},{reward},{outcome}\n")
 

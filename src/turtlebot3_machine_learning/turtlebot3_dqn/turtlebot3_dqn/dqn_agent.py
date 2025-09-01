@@ -80,7 +80,7 @@ class DQNAgent(Node):
         self.state_size = 2
         self.action_size = 10
         self.max_training_episodes = int(max_training_episodes)
-        self.max_step = 300
+        self.max_step = 200
         self.training_active = False           # 학습 구간인지 여부
         self.succeed = False
         self.fail = False
@@ -88,10 +88,10 @@ class DQNAgent(Node):
         self.learning_rate = 0.0007
         self.epsilon = 1.0
         self.step_counter = 0
-        self.epsilon_decay = 60000  # * self.stage
+        self.epsilon_decay = 60000
         self.epsilon_min = 0.05
         self.batch_size = 128
-        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
+        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True, ncols=80)
         
         self.replay_memory = collections.deque(maxlen=500000)
         self.min_replay_memory_size = 5000
@@ -164,7 +164,7 @@ class DQNAgent(Node):
 
             while True:
                 
-                if (not self.training_active) and (self.start_triggered or pre_step > 600):
+                if (not self.training_active) and (self.start_triggered or pre_step > 650):
                     self.training_active = True
                     self.start_triggered = False
                     local_step = 0; pre_step = 0; score = 0.0; sum_max_q = 0.0
@@ -217,7 +217,7 @@ class DQNAgent(Node):
 
                         # ===== 에피소드 결과 저장 추가 =====
                         today_str = datetime.datetime.now().strftime("%m%d")
-                        result_file = os.path.join(self.model_dir_path, "episode_score" + today_str + ".csv")
+                        result_file = os.path.join(self.model_dir_path, "episode_score" + '500' + ".csv")
 
                         with open(result_file, "a") as f:
                             f.write(f"{episode_num},{local_step},{score}\n")
@@ -401,7 +401,7 @@ class DQNAgent(Node):
 def main(args=None):
     if args is None:
         args = sys.argv
-    max_training_episodes = args[2] if len(args) > 2 else '1000'
+    max_training_episodes = args[2] if len(args) > 2 else '10000'
     rclpy.init(args=args)
 
     dqn_agent = DQNAgent(max_training_episodes)
