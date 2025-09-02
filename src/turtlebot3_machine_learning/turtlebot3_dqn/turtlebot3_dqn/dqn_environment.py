@@ -30,6 +30,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from std_srvs.srv import Empty
+from datetime import datetime
 
 from turtlebot3_msgs.srv import Dqn
 from turtlebot3_msgs.srv import Goal
@@ -51,36 +52,40 @@ class RLEnvironment(Node):
         self.goal_pose_y = 1.1942
         self.robot_pose_x = 0.0
         self.robot_pose_y = 0.0
-
-        # self.action_size = 5
-        self.action_size = 11
-        self.max_step = 300
+        self.episode_count = 1
+        self.action_size = 10
+        self.max_step = 200
 
         self.done = False
         self.fail = False
         self.succeed = False
         self.parkingline_ratio = 0.0
-        self.collisoin_flag = False
+        self.parking_detect = False
+        self.training_active = False      # False -> True 전이되면 학습/step 시작
+        self.pre_step = 0                 # 주차감지 전 전진 카운트(선택적 로깅용)
+        self.local_step = 0               # 학습구간(감지 이후)에서만 증가
+
+        self.start_triggered = False
+        self.collision_flag = False
         self.goal_angle = 0.0
         self.goal_distance = 1.0
-        self.init_goal_distance = 0.5
+        self.init_goal_distance = 0.7
         self.scan_ranges = []
         self.front_ranges = []
         self.min_obstacle_distance = 10.0
         self.is_front_min_actual_front = False
-        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True)
-        # # 충돌센서 변수 추가
-        # self.bumper_in_contact = False
-        # self.bumper_force_norm = 0.0
-        # self.bumper_max_depth = 0.0
-
+        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True,ncols=80)
+        self.model_dir_path = os.path.join(
+            '/home/dykim/auto_parking',
+            'saved_model'
+        )
 
         self.local_step = 0
         self.stop_cmd_vel_timer = None
-        # self.angular_vel = [1.5, 0.75, 0.0, -0.75, -1.5]
-        self.angular_vel = [[0.1, 1.5], [0.1, 0.75], [0.1, 0.0], [0.1, -0.75], [0.1, -1.5],
-                            [0.0, 0.0],
-                            [-0.1, 1.5], [-0.1, 0.75], [-0.1, 0.0], [-0.1, -0.75], [-0.1, -1.5]]
+        self.angular_vel = [
+            [ 0.1,  0.6], [ 0.1,  0.3], [ 0.1,  0.0], [ 0.1, -0.3], [ 0.1, -0.6],
+            [-0.1,  0.6], [-0.1,  0.3], [-0.1,  0.0], [-0.1, -0.3], [-0.1, -0.6]
+        ]
         qos = QoSProfile(depth=10)
 
         if ROS_DISTRO == 'humble':
@@ -92,14 +97,6 @@ class RLEnvironment(Node):
             self.odom_sub_callback,
             qos
         )
-        
-        ######################## 카메라 3종으로 교체  service client로
-        # self.scan_sub = self.create_subscription(
-        #     LaserScan,
-        #     'scan',
-        #     self.scan_sub_callback,
-        #     qos_profile_sensor_data
-        # )
         self.rear_yellow_ratio = self.create_subscription(
             Float64,
             '/rear/ratio',
@@ -107,7 +104,7 @@ class RLEnvironment(Node):
             10
         )
 
-        self.collision_flag = self.create_subscription(
+        self.collision_flag_sub = self.create_subscription(
             Bool, 
             '/collision/flag',
             self.collision_flag_callback,
@@ -148,14 +145,100 @@ class RLEnvironment(Node):
             self.reset_environment_callback
         )
 
-        # 충돌센서 토픽 추가
-        # self.bumper_sub = self.create_subscription(
-        #     ContactsState,
-        #     '/bumper_states',
-        #     self.bumper_sub_callback,
-        #     qos_profile_sensor_data  # 또는 QoSProfile(depth=10)
-        # )
+        self.parking_sub = self.create_subscription(
+            Bool,
+            '/parking_zone_detected',
+            self.parking_sub_callback,
+            10,
+            callback_group=self.clients_callback_group
+        )
+        # ===== [CHANGE] 후면주차 방향 =====
+        self.goal_yaw = 0.0   # 후면주차: 차량 헤딩이 슬롯 밖(0) 향하도록
 
+        # ===== [NEW] 보상 예산(점수 분배) =====
+        self.OUTCOME_BUDGET = 15.0   # 성공/실패 터미널 보상 절대값
+        self.STEP_BUDGET    = 50.0   # 스텝 패널티 총합
+        # 텔레스코핑(PBRS) 총합 상한 25.0
+
+        # ===== [NEW] 잠재함수(PBRS) 계수 및 감쇠 =====
+        self.GAMMA = 0.99
+        self.SHAPING_LAMBDA = 0.7     # 텔레스코핑 세기(스텝 shaping 강도)
+        self.KD, self.KY, self.KX, self.KROI = 1.0, 0.8, 0.8, 0.5
+        #  d:거리, y:Yaw오차, x:깊이오차, roi:후방선 신뢰
+
+        # ===== [NEW] 캡처존/목표 정렬 기준 =====
+        self.TARGET_Y = 1.1905         # 슬롯 중앙 Y
+        self.TARGET_X_BACK = 0.2525      # 원하는 최종 X(더 작을수록 더 깊이 들어간 상태면 조정)
+        self.CAPTURE_Y_MIN, self.CAPTURE_Y_MAX = 1.11, 1.27
+        self.CAPTURE_X_MAX = 0.33
+
+        # ===== [NEW] 상황 힌트(소규모 가중) =====
+        self.BACK_IN_CAPTURE_BONUS = 1.0   # 캡처존에서 후진 보너스(+)
+        self.FWD_IN_CAPTURE_PENALTY = 1.0  # 캡처존에서 전진 감점(−)
+        self.SMOOTH_PENALTY = 0.05         # 급변 억제
+
+        # ===== [NEW] 텔레스코핑/스무딩 저장 변수 =====
+        self._phi_prev = None
+        self._prev_action = None
+        self._d_norm_prev = 0.0
+        self._yaw_align_prev = 0.0
+
+
+        #          # 최종 정렬하고 싶은 방향 (예: 0 rad)
+        self.last_action = None       # 직전 행동 기억(보상에서 전/후진 판단용)
+
+    # ===== [NEW] 보조 함수들 =====
+    def _yaw_err(self):
+        return abs(self._wrap(self.goal_yaw - self.robot_pose_theta))
+
+    def _y_err(self):
+        return abs(self.robot_pose_y - self.TARGET_Y)
+
+    def _depth_err(self):
+        # 목표보다 덜 들어갔으면 양수(벌금), 더 들어갔으면 0
+        return max(0.0, self.robot_pose_x - self.TARGET_X_BACK)
+
+    def _roi_norm(self):
+        r = float(self.parkingline_ratio)
+        if r <= 0.6:
+            r *= 0.5
+        return max(0.0, min(1.0, r))  # 0~1 정규화
+
+    def _phi(self):
+        # 잠재함수: 값이 작아질수록 좋은 상태
+        return ( self.KD   * float(self.goal_distance)
+            + self.KY   * self._yaw_err()
+            + self.KX   * self._depth_err())
+
+    def _in_capture_zone(self):
+        return (self.robot_pose_x <= self.CAPTURE_X_MAX) and \
+            (self.CAPTURE_Y_MIN <= self.robot_pose_y <= self.CAPTURE_Y_MAX)
+
+    def _capture_zone_hint(self, action_idx):
+        if action_idx is None:
+            return 0.0
+        lin, ang = self.angular_vel[action_idx]
+        if self._in_capture_zone():
+            if lin < 0:
+                return +self.BACK_IN_CAPTURE_BONUS
+            elif lin > 0:
+                return -self.FWD_IN_CAPTURE_PENALTY
+        return 0.0
+
+    def _smooth_penalty(self, prev_action, cur_action):
+        if prev_action is None or cur_action is None:
+            return 0.0
+        lin_p, ang_p = self.angular_vel[prev_action]
+        lin_c, ang_c = self.angular_vel[cur_action]
+        return -self.SMOOTH_PENALTY * (abs(lin_c - lin_p) + abs(ang_c - ang_p))
+
+    def _norm_distance(self):
+        init_d = max(self.init_goal_distance, 1e-6)
+        d_ratio = min(1.0, float(self.goal_distance / init_d))
+        return 1.0 - d_ratio  # 0(멀다) → 1(가깝다)
+
+    def _norm_yaw_align(self):
+        return 1.0 - (self._yaw_err() / math.pi)  # 0(정반대) → 1(정렬)
 
     def ratio_callback(self,msg):
         self.parkingline_ratio = msg.data
@@ -180,7 +263,7 @@ class RLEnvironment(Node):
             self.get_logger().info(
                 'goal initialized at [%f, %f]' % (self.goal_pose_x, self.goal_pose_y)
             )
-
+    
         return response
 
     # dqn_agent에서 학습 끝나고 다음 에피소드를 시작할 때 호출
@@ -190,9 +273,14 @@ class RLEnvironment(Node):
 
         state = self.calculate_state()
         self.init_goal_distance = state[0]
-        self.prev_goal_distance = self.init_goal_distance #이것만 사용
         response.state = state
-
+        
+        self._phi_prev = None
+        self._prev_action = None
+        self._d_norm_prev = 0.0
+        self._yaw_align_prev = 0.0
+        self.last_action = None
+        self.local_step = 0
         return response
 
     # 목표에 도달했을 때 dqn_gazebo.py의 task_succeed 서비스로 요청 보내고 새 목표 좌표를 받아 저장.
@@ -222,6 +310,14 @@ class RLEnvironment(Node):
         else:
             self.get_logger().error('task failed service call failed')
 
+    # 차량 각도 차이 계산용 함수
+    def _wrap(self, a):
+        while a > math.pi:
+            a -= 2.0 * math.pi
+        while a < -math.pi:
+            a += 2.0 * math.pi
+        return a
+    
     # odom 계산
     def odom_sub_callback(self, msg):
         self.robot_pose_x = msg.pose.pose.position.x
@@ -245,142 +341,187 @@ class RLEnvironment(Node):
         self.goal_distance = goal_distance
         self.goal_angle = goal_angle
         
-    # 충돌 감지 콜백함수 추가
-    # def bumper_sub_callback(self, msg: ContactsState):
-    #     # 기본: states가 비어있지 않으면 접촉 중
-    #     in_contact = len(msg.states) > 0
+    def _episode_cleanup(self, success: bool):
+        # 학습/검출/스텝 관련 플래그/카운터 리셋
+        self.training_active = False
+        self.parking_detect = False
+        self.detect_streak = 0  # 아래 C에서 추가할 변수
+        self.local_step = 0
+        self.pre_step = 0
+        # 보상 shaping 기준도 초기화
+        self._phi_prev = None
+        self._prev_action = None
+        self._d_norm_prev = 0.0
+        self._yaw_align_prev = 0.0
+        self.last_action = None
+        
+        self.episode_count += 1
+        if success:
+            self.call_task_succeed()
+        else:
+            self.call_task_failed()
 
-    #     force_norm = 0.0
-    #     max_depth = 0.0
-
-    #     for st in msg.states:
-    #         # total_wrench.force 크기(뉴턴)
-    #         fx = st.total_wrench.force.x
-    #         fy = st.total_wrench.force.y
-    #         fz = st.total_wrench.force.z
-    #         fn = (fx**2 + fy**2 + fz**2) ** 0.5
-    #         force_norm = max(force_norm, fn)
-
-    #         # depths가 비어있지 않으면 최대 관입 깊이 추출
-    #         if st.depths:
-    #             max_depth = max(max_depth, max(st.depths))
-
-    #     # 간단 버전: states가 비어있지 않으면 True
-    #     # 보수적 버전(노이즈 필터링): force_norm > 0.5 N 또는 max_depth > 1e-5 m
-    #     CONTACT_FORCE_THRESHOLD = 0.5
-    #     CONTACT_DEPTH_THRESHOLD = 1e-5
-
-    #     self.bumper_in_contact = in_contact and (
-    #         (force_norm > CONTACT_FORCE_THRESHOLD) or (max_depth > CONTACT_DEPTH_THRESHOLD)
-    #     )
-    #     self.bumper_force_norm = force_norm
-    #     self.bumper_max_depth = max_depth
+        self.collision_flag = False
+        self.training_active = False
+        self.start_triggered = False
 
     def calculate_state(self):
         state = []
+        yaw_error = self._wrap(self.goal_yaw - self.robot_pose_theta)
         state.append(float(self.goal_distance))
-        state.append(float(self.parkingline_ratio))
-        self.local_step += 1
-        # self.get_logger().info(f'current step : {self.local_step}')
+        state.append(float(yaw_error))
 
-        self.pbar.n = self.local_step
-        self.pbar.refresh()
+            # ---- phase 전환 감지 ----
+        # parking_detect가 False->True로 바뀌는 순간을 학습 시작점으로 정의
+        if (not self.training_active) and self.start_triggered:
+            self.training_active = True
+            self.start_triggered = False
+            self.local_step = 0      # << 감지시점부터 step 0부터 시작
+
+        # ---- 스텝 카운트 ----
+        if self.training_active:
+            self.local_step += 1
+            self.pbar.n = self.local_step
+            self.pbar.set_description(f"[TRAIN] Ep {self.episode_count}")
+            self.pbar.refresh()
+
+        else:
+            # 학습 이전 구간(전진만) - 선택: 로깅/분석용
+            self.pre_step += 1
+            self.get_logger().debug(f'[PRE] pre_step : {self.pre_step}')
 
         msg = Twist() 
         msg.linear.x = 0.
         msg.angular.z = 0.
-        if self.goal_distance < 0.05:
-            self.get_logger().info('Goal Reached')
-            self.succeed = True
-            self.done = True
-            
-            if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(msg)
-                time.sleep(1.)
-            self.local_step = 0
+        if self.training_active:
+            if (0.966 <= self.robot_pose_y <= 1.413) and self.robot_pose_x <= 0.25:
+                self.get_logger().info('Goal Reached')
+                self.succeed = True
+                self.done = True
 
-            self.call_task_succeed()
-        # # self.min_obstacle_distanse 산출방식 수정 필요
-        # if self.bumper_in_contact:  # Contact Sensor 충돌 조
-        if self.collision_flag == True:
-            self.get_logger().info('Collision happened')
-            self.fail = True
-            self.done = True
-            if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(msg)
-                time.sleep(1.)
-            self.local_step = 0
-            self.call_task_failed()
+                if ROS_DISTRO == 'humble':
+                    self.cmd_vel_pub.publish(msg)
+                    time.sleep(1.)
+                self._episode_cleanup(success=True)
 
-        # 시간초과
-        if self.local_step == self.max_step:
-            self.get_logger().info('Time out!')
-            self.fail = True
-            self.done = True
-            if ROS_DISTRO == 'humble':
-                self.cmd_vel_pub.publish(msg)
-                time.sleep(1.)
-            self.local_step = 0
-            self.call_task_failed()
+            if self.collision_flag == True:
+                self.get_logger().info('Collision happened')
+                self.fail = True
+                self.done = True
+                if ROS_DISTRO == 'humble':
+                    self.cmd_vel_pub.publish(msg)
+                    time.sleep(1.)
+                self._episode_cleanup(success=False)
+
+            # 시간초과
+            if self.local_step == self.max_step:
+                self.get_logger().info('Time out!')
+                self.fail = True
+                self.done = True
+                if ROS_DISTRO == 'humble':
+                    self.cmd_vel_pub.publish(msg)
+                    time.sleep(1.)
+                self._episode_cleanup(success=False)
+
+            if self.robot_pose_y <= 0.74:
+                self.get_logger().info('Time out!1')
+                self.fail = True
+                self.done = True
+                if ROS_DISTRO == 'humble':
+                    self.cmd_vel_pub.publish(msg)
+                    time.sleep(1.)
+                self._episode_cleanup(success=False)
+
+            if self.robot_pose_y >= 1.86:
+                self.get_logger().info('Time out!2')
+                self.fail = True
+                self.done = True
+                if ROS_DISTRO == 'humble':
+                    self.cmd_vel_pub.publish(msg)
+                    time.sleep(1.)
+                self._episode_cleanup(success=False)
 
         return state
+    
+    def parking_sub_callback(self, msg):
+        self.start_triggered = True
 
     def calculate_reward(self):
-        # ----- 기본 스칼라 -----
-        # 진행도: 이전 거리 - 현재 거리 (가까워지면 양수, 멀어지면 음수)
-        progress = float(self.prev_goal_distance - self.goal_distance)
+        # === 스텝 페널티(총 −STEP_BUDGET가 되도록 균등 분배) ===
+        # 총합이 -STEP_BUDGET이 되도록 정규화
+        step_scale = (2.0 * self.STEP_BUDGET) / (self.max_step * (self.max_step + 1))
+        step_pen = - step_scale * self.local_step   # local_step: 1,2,3,...
 
-        # 거리 스케일링(초기 거리 기준 정규화: 0~1 근처로)
-        d_norm = float(self.goal_distance / max(self.init_goal_distance, 1e-6))
+        # === 텔레스코핑(PBRS) shaping: λ[γΦ(s′) − Φ(s)] ===
+        phi_now = self._phi()
+        if self._phi_prev is None:
+            self._phi_prev = phi_now
+        pbrs = - self.SHAPING_LAMBDA * (self.GAMMA * phi_now - self._phi_prev)
+        self._phi_prev = phi_now
 
-        # 노란선 비율(작을수록 좋음: 0이 최상, 1이 최악 가정)
-        y = float(self.parkingline_ratio)
+        # === 품질 차분(정규화 지표의 변화량) – 선택/설명용 ===
+        d_norm = self._norm_distance()  
+        yaw_align = self._norm_yaw_align()
+        delta_d = d_norm - self._d_norm_prev
+        delta_yaw = yaw_align - self._yaw_align_prev
+        # (원하면 여기 delta들을 로그에 남겨 품질 개선량을 모니터링)
 
-        # 시간 패널티(0~1)
-        t = float(self.local_step / max(self.max_step, 1))
+        # === 상황 힌트: 캡처존 후진/전진 & 스무딩(소규모) ===
+        hint = self._capture_zone_hint(self.last_action)
+        smooth = self._smooth_penalty(self._prev_action, self.last_action)
 
-        # ----- 밀도 보상(스텝마다) -----
-        # 진행도 보상(거리 줄이면 +, 멀어지면 -)
-        r_progress = 1.0 * progress          # coef: 1.0
+        # === 비-터미널 기본 스텝 보상 ===
+        reward = step_pen + pbrs + hint + smooth
 
-        # 잔여 거리 패널티(멀면 -) : 초반엔 탐색하고 후반엔 수렴하도록 tanh로 완화 가능
-        r_distance = -0.3 * d_norm           # coef: 0.3
-
-        # 주차선 패널티(라인 비율이 크면 -)
-        r_line = -0.6 * (1-y)                    # coef: 0.6  (기존 0.4보다 약간 강화)
-
-        # 시간 패널티(질질 끌면 -)
-        r_time = -0.1 * t                    # coef: 0.1  (너무 세면 조기 돌진만 유도)
-
-        reward = r_progress + r_distance + r_line + r_time
-
-        # ----- 게이트/보너스/패널티 -----
-        # 일정 수준 이하에서만 보상 활성화(초기 혼란 억제)
-        # 주차선이 너무 나쁘면(>0.8) 보상 상한 캡
-        if y < 0.6:
-            reward = min(reward, 0.0)
-
-        # 터미널 보상
+        # === 터미널 보상(Outcome) + 절대 품질 보정 ===
         if self.succeed:
-            # 가까운 곳에서 깔끔히 멈출수록 보너스 조금 더
-            bonus = 3.0 + max(0.0, 1.0 - d_norm) * 2.0   # 3.0~5.0
-            reward += bonus
+            # 절대 품질: Y 정렬, yaw 정렬, 깊이, ROI
+            y_align_bonus   = 12.0 * math.exp(-6.0 * self._y_err())
+            yaw_align_bonus = 10.0 * math.exp(-2.5 * self._yaw_err())
+            depth_bonus     = 10.0 * math.exp(-8.0  * self._depth_err())
+            roi_bonus       =  5.0 * self._roi_norm()
 
-        if self.fail:  # 충돌 또는 타임아웃
-            # 라인이 엉망인 상태에서의 실패는 더 큰 패널티
-            penalty = 3.0 + (d_norm  * 2.0)                    # 3.0~5.0
-            reward -= penalty
+            reward += ( + self.OUTCOME_BUDGET
+                        + y_align_bonus + yaw_align_bonus + depth_bonus + roi_bonus + 60 )
 
-        # ----- 진행도 기준 업데이트 -----
-        # 다음 스텝을 위해 이전 거리를 현재 거리로 갱신
-        self.prev_goal_distance = self.goal_distance
+            # 로깅
+            today_str = datetime.now().strftime("%m%d")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + '5000' + ".csv")
+            with open(result_file, "a") as f:
+                f.write(f"{self.episode_count},{self.local_step},{reward},succeed\n")
+
+        elif self.fail:
+            # 실패 절대 품질 감점 + Outcome
+            y_bad   = - 4.0 * self._y_err()
+            yaw_bad = - 4.0 * self._yaw_err()
+            depth_bad = - 4.0 * self._depth_err()
+            outcome = "failed"
+
+            if getattr(self, 'collision_flag', False) is True:
+                reward += (- self.OUTCOME_BUDGET - 25.0)  # 충돌은 추가 패널티
+                outcome = "crash"
+            else:
+                reward += (- self.OUTCOME_BUDGET)
+
+            reward += (y_bad + yaw_bad + depth_bad)
+
+            today_str = datetime.now().strftime("%m%d")
+            result_file = os.path.join(self.model_dir_path, "step_reward" + '5000' + ".csv")
+            with open(result_file, "a") as f:
+                f.write(f"{self.episode_count},{self.local_step},{reward},{outcome}\n")
+
+        # === 다음 스텝 대비 업데이트 ===
+        self._d_norm_prev = d_norm
+        self._yaw_align_prev = yaw_align
+        self._prev_action = self.last_action
 
         return float(reward)
 
 
     # 로봇 동작 수행
     def rl_agent_interface_callback(self, request, response):
-        action = request.action
+        action = int(request.action)
+        self.last_action = action
         if ROS_DISTRO == 'humble':
             msg = Twist() 
             msg.linear.x = self.angular_vel[action][0]
@@ -388,7 +529,6 @@ class RLEnvironment(Node):
         self.cmd_vel_pub.publish(msg)
 
         if self.stop_cmd_vel_timer is None:
-            self.prev_goal_distance = self.init_goal_distance
             self.stop_cmd_vel_timer = self.create_timer(0.3, self.timer_callback)
         else:
             self.destroy_timer(self.stop_cmd_vel_timer)
@@ -402,8 +542,8 @@ class RLEnvironment(Node):
             self.done = False
             self.succeed = False
             self.fail = False
-
         return response
+
 
     def timer_callback(self):
         self.get_logger().info('Stop called')

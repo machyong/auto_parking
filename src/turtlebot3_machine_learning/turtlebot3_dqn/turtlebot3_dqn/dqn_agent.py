@@ -26,6 +26,7 @@ import random
 import sys
 import time
 
+
 import numpy
 import rclpy
 from rclpy.node import Node
@@ -38,13 +39,12 @@ from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import load_model
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
-
 from turtlebot3_msgs.srv import Dqn
 # 추가 import
 import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-
+from tqdm import tqdm 
 #gpu 비활성화 코드
 tensorflow.config.set_visible_devices([], 'GPU')
 
@@ -78,19 +78,20 @@ class DQNAgent(Node):
         # 학습 관련 기본값
         self.train_mode = True
         self.state_size = 2
-        self.action_size = 11
+        self.action_size = 10
         self.max_training_episodes = int(max_training_episodes)
-
-        self.done = False
+        self.max_step = 200
+        self.training_active = False           # 학습 구간인지 여부
         self.succeed = False
         self.fail = False
         self.discount_factor = 0.99
         self.learning_rate = 0.0007
         self.epsilon = 1.0
         self.step_counter = 0
-        self.epsilon_decay = 6000  # * self.stage
+        self.epsilon_decay = 60000
         self.epsilon_min = 0.05
         self.batch_size = 128
+        self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True, ncols=80)
         
         self.replay_memory = collections.deque(maxlen=500000)
         self.min_replay_memory_size = 5000
@@ -105,23 +106,11 @@ class DQNAgent(Node):
         self.load_episode = 0
         self.parking_detect = False
         self.model_dir_path = os.path.join(
-            '/home/yong/auto_parking/saved_model',
+            '/home/dykim/auto_parking',
             'saved_model'
         )
-        # self.model_path = os.path.join(
-        #     self.model_dir_path,
-        #     'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.h5'
-        # )
-
-        # if self.load_model:
-        #     self.model.set_weights(load_model(self.model_path).get_weights())
-        #     with open(os.path.join(
-        #         self.model_dir_path,
-        #         'stage' + str(self.stage) + '_episode' + str(self.load_episode) + '.json'
-        #     )) as outfile:
-        #         param = json.load(outfile)
-        #         self.epsilon = param.get('epsilon')
-        #         self.step_counter = param.get('step_counter')
+        self.drive_result = False
+        self.start_triggered = False
 
         if LOGGING:
             tensorboard_file_name = current_time + ' dqn_stage' + '_reward'
@@ -166,62 +155,96 @@ class DQNAgent(Node):
             time.sleep(0.5)  # 안정화 대기
             # 환경 초기화 2차
             state = self.reset_environment()
-            
+            self.training_active = False
+            self.start_triggered = False
+            local_step = 0; pre_step = 0; score = 0.0; sum_max_q = 0.0
             episode_num += 1
             self.get_logger().info(f'Episode : {episode_num}')
-            local_step = 0
-            score = 0
-            sum_max_q = 0.0
             time.sleep(1.5)
 
             while True:
-                local_step += 1
+                
+                if (not self.training_active) and (self.start_triggered or pre_step > 650):
+                    self.training_active = True
+                    self.start_triggered = False
+                    local_step = 0; pre_step = 0; score = 0.0; sum_max_q = 0.0
+                    # 필요시 state를 고정하고 싶으면 유지, 아니면 바로 다음 루프에서 next_state 사용
 
-                q_values = self.model.predict(state)
-                sum_max_q += float(numpy.max(q_values))
+                # ---- action 선택 ----
+                if not self.training_active:
+                    # pre-phase: 앞으로만 진행(학습/ε 없음)
+                    action = 2
+                    pre_step += 1
+                else:
+                    # train-phase: ε-greedy + q 추적
+                    local_step += 1
+                    self.pbar.n = local_step
+                    self.pbar.set_description(f"[TRAIN] Ep {episode_num}")
+                    self.pbar.refresh()
 
-                action = int(self.get_action(state))
+                    q_values = self.model.predict(state, verbose=0)
+                    sum_max_q += float(numpy.max(q_values))
+                    action = int(self.get_action(state))  # 이 함수 내부에서만 ε-감쇠 진행
+
+                # ---- 환경 진행 ----
                 next_state, reward, done = self.step(action)
-                score += reward
 
+                # ---- 퍼블리시 (phase 플래그 포함: 0=pre, 1=train) ----
+                phase_flag = 1.0 if self.training_active else 0.0
                 msg = Float32MultiArray()
-                msg.data = [float(action), float(score), float(reward)]
+                if self.training_active:
+                    score += reward
+                    msg.data = [float(action), float(score), float(reward), phase_flag]
+                else:
+                    # pre-phase: 점수/보상 집계하지 않음
+                    msg.data = [float(action), 0.0, 0.0, phase_flag]
                 self.action_pub.publish(msg)
 
-                if self.train_mode:
+                # ---- 학습은 train-phase에만 ----
+                if self.training_active:
                     self.append_sample((state, action, reward, next_state, done))
                     self.train_model(done)
 
                 state = next_state
 
                 if done:
-                    while self.parking_detect == True:
-                        self.parking_detect = False
-                        print(f'parking_detect 초기화 : {self.parking_detect}')
-                        time.sleep(0.1)
-                    avg_max_q = sum_max_q / local_step if local_step > 0 else 0.0
+                    if self.training_active:
+                        avg_max_q = sum_max_q / local_step if local_step > 0 else 0.0
 
-                    msg = Float32MultiArray()
-                    msg.data = [float(score), float(avg_max_q)]
-                    self.result_pub.publish(msg)
+                        msg = Float32MultiArray()
+                        msg.data = [float(score), float(avg_max_q)]
+                        self.result_pub.publish(msg)
 
-                    if LOGGING:
-                        self.dqn_reward_metric.update_state(score)
-                        with self.dqn_reward_writer.as_default():
-                            tensorflow.summary.scalar(
-                                'dqn_reward', self.dqn_reward_metric.result(), step=episode_num
-                            )
-                        self.dqn_reward_metric.reset_states()
+                        # ===== 에피소드 결과 저장 추가 =====
+                        today_str = datetime.datetime.now().strftime("%m%d")
+                        result_file = os.path.join(self.model_dir_path, "episode_score" + '500' + ".csv")
 
-                    print(
-                        'Episode:', episode,
-                        'score:', score,
-                        'memory length:', len(self.replay_memory),
-                        'epsilon:', self.epsilon)
+                        with open(result_file, "a") as f:
+                            f.write(f"{episode_num},{local_step},{score}\n")
+                        # ===============================
+
+                        if LOGGING:
+                            self.dqn_reward_metric.update_state(score)
+                            with self.dqn_reward_writer.as_default():
+                                tensorflow.summary.scalar(
+                                    'dqn_reward', self.dqn_reward_metric.result(), step=episode_num
+                                )
+                            self.dqn_reward_metric.reset_states()
+
+                        print(
+                            'Episode:', episode,
+                            'score:', score,
+                            'memory length:', len(self.replay_memory),
+                            'epsilon:', self.epsilon)
+                    else:
+                        self.get_logger().info(f"Episode {episode} ended before training activated")
 
                     param_keys = ['epsilon', 'step']
                     param_values = [self.epsilon, self.step_counter]
                     param_dictionary = dict(zip(param_keys, param_values))
+
+                    self.start_triggered = False
+                    self.training_active = False
                     break
 
                 time.sleep(0.01)
@@ -268,22 +291,19 @@ class DQNAgent(Node):
         return state
 
     def get_action(self, state):
-        if self.parking_detect == False:
-            result = 2
-        else:
-            if self.train_mode:
-                self.step_counter += 1
-                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
-                    -1.0 * self.step_counter / self.epsilon_decay)
-                lucky = random.random()
-                if lucky > (1 - self.epsilon):
-                    result = random.randint(0, self.action_size - 1)
-                else:
-                    result = numpy.argmax(self.model.predict(state))
-            else:
-                result = numpy.argmax(self.model.predict(state))
-
-        return result
+        """
+        process()에서 parking_detect == True일 때만 호출됨을 전제로 한다.
+        -> 여기서는 순수하게 ε-greedy만 수행.
+        """
+        if self.train_mode:
+            self.step_counter += 1
+            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * math.exp(
+                -1.0 * self.step_counter / self.epsilon_decay
+            )
+            if random.random() < self.epsilon:
+                return random.randint(0, self.action_size - 1)
+        # exploit
+        return int(numpy.argmax(self.model.predict(state, verbose=0)))
 
 
     def step(self, action):
@@ -338,11 +358,11 @@ class DQNAgent(Node):
 
         current_states = numpy.array([transition[0] for transition in data_in_mini_batch])
         current_states = current_states.squeeze()
-        current_qvalues_list = self.model.predict(current_states)
+        current_qvalues_list = self.model.predict(current_states,verbose=0)
 
         next_states = numpy.array([transition[3] for transition in data_in_mini_batch])
         next_states = next_states.squeeze()
-        next_qvalues_list = self.target_model.predict(next_states)
+        next_qvalues_list = self.target_model.predict(next_states,verbose=0)
 
         x_train = []
         y_train = []
@@ -376,12 +396,12 @@ class DQNAgent(Node):
             self.update_target_model()
 
     def parking_sub_callback(self, msg):
-        self.parking_detect = msg.data
+        self.start_triggered = True
 
 def main(args=None):
     if args is None:
         args = sys.argv
-    max_training_episodes = args[2] if len(args) > 2 else '1000'
+    max_training_episodes = args[2] if len(args) > 2 else '10000'
     rclpy.init(args=args)
 
     dqn_agent = DQNAgent(max_training_episodes)
