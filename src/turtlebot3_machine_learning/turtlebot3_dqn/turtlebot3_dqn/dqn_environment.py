@@ -76,7 +76,7 @@ class RLEnvironment(Node):
         self.is_front_min_actual_front = False
         self.pbar = tqdm(total=self.max_step, desc="Episode Progress", position=0, leave=True,ncols=80)
         self.model_dir_path = os.path.join(
-            '/home/dykim/auto_parking',
+            '/home/yong/auto_parking',
             'saved_model'
         )
 

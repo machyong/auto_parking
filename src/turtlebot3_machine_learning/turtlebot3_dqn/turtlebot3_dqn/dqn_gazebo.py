@@ -40,7 +40,7 @@ class GazeboInterface(Node):
         self.entity_pose_y = 1.1905
         self.episode_count = 1
         self.model_dir_path = os.path.join(
-            '/home/dykim/auto_parking',
+            '/home/yong/auto_parking',
             'saved_model'
         )
         if ROS_DISTRO == 'humble':
