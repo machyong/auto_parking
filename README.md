@@ -75,6 +75,9 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 - 충돌 시 초기화 문제 수정
 > 브랜치: `main/test_of_train`
 
+## 결과 영상
+[![강화학습을 통한 자율주차 학습결과](https://img.youtube.com/vi/zjEXBvHMCus/0.jpg)](https://www.youtube.com/watch?v=zjEXBvHMCus)
+
 ## ▶️ 실행 방법
 
 
