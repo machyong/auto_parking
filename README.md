@@ -6,16 +6,6 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 
 ---
 
-## 📁 브랜치 설명
-
-| 브랜치명 | 설명 |
-|----------|------|
-| `main` | 기본 TurtleBot3 및 autorace 환경 |
-| `rear_camera_parkingline_detector` | 후방 카메라의 이미지를 필터링하여 주차라인 도착 여부 확인 |
-| `parking_area_detect` | 우측 카메라의 이미지를 필터링하여 주차 가능구역 탐색 |
-
----
-
 ## 📌 사용된 주요 ROS2 패키지
 - `turtlebot3_gazebo`
 - `gazebo_ros`
