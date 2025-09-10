@@ -24,6 +24,13 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 - `tf2_ros
 - `sensor_msgs`
 
+## 주요 기능
+- **다중 카메라 입력**: `rear`, `left`, `right` 카메라 이미지 토픽 구독
+- **라인 검출(노란선/흰선)**: ROI 하단 80%에서 색상 기반 필터링 및 비율 산출
+- **주차 가능 구역 검출**: ROI 사각형 컨투어 면적 비율 ≥ 40% 시 True
+- **강화학습 환경/에이전트 분리**: `dqn_environment` ↔ `dqn_agent`
+- **충돌 판정**: 충돌 센서 추가 및 충돌 토픽 구독
+- **학습 로깅/가시화**: 스텝 로그 가독성 개선 및 결과 분석 스크립트(`result_analysis/`)
 ## 🔧 Version History
 
 ### 🚀 v0.0.01 - Gazebo Simulation
@@ -78,6 +85,13 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
 ## 🎥 결과 영상
 [![강화학습을 통한 자율주차 학습결과](https://img.youtube.com/vi/zjEXBvHMCus/0.jpg)](https://www.youtube.com/watch?v=zjEXBvHMCus)
 
+## 시스템 요구사항
+- **OS**: Ubuntu 22.04 LTS 권장  
+- **ROS 2**: Humble Hawksbill  
+- **Simulator**: Gazebo Classic  
+- **Python**: 3.10+  
+- **패키지**: `turtlebot3_gazebo`, `gazebo_ros`, `image_transport`, `tf2_ros`, `sensor_msgs`, OpenCV 등
+
 ## ▶️ 실행 방법
 
 
@@ -97,4 +111,10 @@ ros2 run turtlebot3_dqn dqn_environment
 # Run agent node
 ros2 run turtlebot3_dqn dqn_agent
 ```
+## 학습(Training) & 평가(Evaluation)
+# 보상 설계(요지)
 
+- 성공: 성공 점수 + ROI 기반 성공 점수 + 거리/각도 점수
+- 실패(충돌/스텝초과): 거리/각도 점수 − (충돌/초과 패널티)
+- 진행중: 얇은 shaping 중심(진행도 − 이동 소패널티)
+# 로그/결과 분석: result_analysis
