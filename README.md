@@ -77,10 +77,34 @@ Gazebo 기반 autorace 맵을 사용하며 주차에 대한 강화학습을 진�
   
 ### 🚀 v0.0.08 - agent
 - reward방식 수정
-- environment step 로그 가시성 개편
+- environment step 로그 가시성 개편하
 - 초기화시 차량 흔들림 수정 (2번 초기화)
 - 충돌 시 초기화 문제 수정
 > 브랜치: `main/test_of_train`
+
+### 🚀 v0.0.09 – Launch & Setup
+- Gazebo 시뮬레이션 실행을 위한 launch 파일 추가
+- sdf 모델 중복 입력 삭제 및 collision box 색상 디버그 
+- logger / parking_sub_callback 정리
+- reset 동작 및 crash 처리 코드 개선
+> 브랜치: 'main/startline_ML'
+
+### 🚀v0.0.10 – Refactor & Merge
+- train_test 브랜치 및 startline_ML 브랜치 병합
+- rear_env / keep_straight 브랜치 기능 통합
+
+### 🚀 v0.0.11 – Documentation & Maintenance
+  - README 다수 업데이트
+  - 불필요 파일/코드 정리
+  - 리팩토링 마무리 및 충돌 대응 최적화
+
+### 🚀 v0.1.00 	~  – test
+  - reward 수정
+
+### 🚀 v0.2.00 	~  – test
+  - reward 대폭 수정
+  - 학습량 증가 
+    
 
 ## 🎥 결과 영상
 [![강화학습을 통한 자율주차 학습결과](https://img.youtube.com/vi/zjEXBvHMCus/0.jpg)](https://www.youtube.com/watch?v=zjEXBvHMCus)
