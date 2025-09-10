@@ -111,10 +111,9 @@ ros2 run turtlebot3_dqn dqn_environment
 # Run agent node
 ros2 run turtlebot3_dqn dqn_agent
 ```
-## 학습(Training) & 평가(Evaluation)
-# 보상 설계(요지)
-
+# 학습(Training) & 평가(Evaluation)
+## 보상 설계(요지)
 - 성공: 성공 점수 + ROI 기반 성공 점수 + 거리/각도 점수
 - 실패(충돌/스텝초과): 거리/각도 점수 − (충돌/초과 패널티)
 - 진행중: 얇은 shaping 중심(진행도 − 이동 소패널티)
-# 로그/결과 분석: result_analysis
+## 로그/결과 분석: result_analysis
